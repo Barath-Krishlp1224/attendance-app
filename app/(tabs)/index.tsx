@@ -1,4 +1,3 @@
-// app/login.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -97,7 +96,6 @@ export default function LoginScreen() {
         router.replace("/(tabs)/attendance");
       }, 800);
     } catch (err) {
-      console.error("Mobile login error:", err);
       Toast.show({
         type: "error",
         text1: "Network error. Try again later.",
@@ -117,7 +115,6 @@ export default function LoginScreen() {
         <View style={styles.circle2} />
       </View>
 
-      {/* 👇 Logo outside the card */}
       <Image source={logoImage} style={styles.logo} />
 
       <View style={styles.card}>
@@ -208,7 +205,6 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
 
-  // 👇 Updated position for outside-card logo
   logo: {
     width: 200,
     height: 80,

@@ -14,6 +14,9 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import Toast from 'react-native-toast-message';
+
 import {
   User,
   MapPin,
@@ -31,7 +34,8 @@ import {
   AlertCircle,
   ChevronLeft,
   AlertTriangle,
-  Clock3, // Use Clock3 for history/status
+  Clock3,
+  Power,
 } from 'lucide-react-native';
 
 type RootStackParamList = {
@@ -57,16 +61,16 @@ interface AttendanceRecord {
   punchOutTime?: string;
   punchInMode?: AttendanceMode;
   punchOutMode?: AttendanceMode;
-  mode?: AttendanceMode; // Fallback mode
+  mode?: AttendanceMode;
 }
 
 type CameraRef = React.ComponentRef<typeof CameraView>;
 
-// Mock API Base URL (Update if needed)
 const API_BASE_URL = 'https://check-seven-steel.vercel.app';
 
 const AttendanceScreen: React.FC = () => {
   const navigation = useNavigation<AttendanceScreenNavigationProp>();
+  const router = useRouter();
 
   const [screenWidth, setScreenWidth] = useState(
     Dimensions.get('window').width
@@ -110,12 +114,15 @@ const AttendanceScreen: React.FC = () => {
   const [loadingRecord, setLoadingRecord] = useState(false);
 
   const [punchType, setPunchType] = useState<PunchType | null>(null);
-  const [mode, setMode] = useState<AttendanceMode>('IN_OFFICE'); // Default to IN_OFFICE
+  const [mode, setMode] = useState<AttendanceMode>('IN_OFFICE');
 
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  
+  // NEW STATE FOR LOGOUT CONFIRMATION
+  const [isLogoutConfirming, setIsLogoutConfirming] = useState(false);
 
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
 
@@ -194,9 +201,7 @@ const AttendanceScreen: React.FC = () => {
       const h = d.getHours();
       const m = d.getMinutes();
 
-      // Assuming 9:30 AM is standard start
       const after930 = h > 9 || (h === 9 && m >= 30);
-      // Assuming 9:35 AM is 'late' after grace period
       const after935 = h > 9 || (h === 9 && m > 35);
 
       if (after935) {
@@ -211,7 +216,6 @@ const AttendanceScreen: React.FC = () => {
       const h = d.getHours();
       const m = d.getMinutes();
 
-      // Assuming 6:30 PM is standard end
       const before630 = h < 18 || (h === 18 && m < 30);
       if (before630) {
         isEarlyLogout = true;
@@ -235,7 +239,6 @@ const AttendanceScreen: React.FC = () => {
       else parts.push('On Time Logout');
     }
     
-    // Add "Complete" or "Incomplete"
     if (punchInTime && punchOutTime) {
         return 'Complete | ' + parts.join(' | ');
     } else if (punchInTime && !punchOutTime) {
@@ -250,12 +253,12 @@ const AttendanceScreen: React.FC = () => {
   const getStatusColor = (rec: AttendanceRecord | null) => {
     const status = getStatusLabel(rec);
     if (status.includes('Late') || status.includes('Early') || status.includes('No Login') || status.includes('No Logout')) {
-        return '#f59e0b'; // Amber
+        return '#f59e0b';
     }
     if (status.includes('On Time') || status.includes('Complete')) {
-        return '#16a34a'; // Green
+        return '#16a34a';
     }
-    return '#64748b'; // Gray
+    return '#64748b';
   };
 
   const currentDate = new Date().toLocaleDateString('en-US', {
@@ -269,8 +272,6 @@ const AttendanceScreen: React.FC = () => {
     async (empId: string, currentMode: AttendanceMode) => {
       try {
         setLoadingRecord(true);
-        // Note: The API call might need adjustment based on your backend
-        // This assumes the API returns the full record for the day/mode
         const res = await fetch(`${API_BASE_URL}/api/attendance/today`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -340,8 +341,45 @@ const AttendanceScreen: React.FC = () => {
   };
 
   const handleGoBack = useCallback(() => {
-    navigation.navigate('index');
-  }, [navigation]);
+    router.replace('/(tabs)/attendance');
+  }, [router]);
+  
+  // NEW: Function to show the confirmation modal
+  const showLogoutConfirmation = () => {
+    setIsLogoutConfirming(true);
+  };
+
+  // NEW: Function to execute logout after confirmation
+  const confirmLogout = async () => {
+    setIsLogoutConfirming(false); 
+    try {
+      await AsyncStorage.multiRemove([
+        "userRole",
+        "userEmpId",
+        "userName",
+        "userTeam",
+      ]);
+
+      Toast.show({
+        type: "info",
+        text1: "Logged out successfully.",
+      });
+
+      // Redirect to the root of the app
+      router.replace('/'); 
+      
+    } catch (e) {
+      console.error("Logout error:", e);
+      Toast.show({
+        type: "error",
+        text1: "Failed to log out.",
+      });
+    }
+  };
+
+  const handleCancelLogout = () => {
+    setIsLogoutConfirming(false);
+  };
 
   const handleStepBack = () => {
     if (currentStep === 2) {
@@ -430,11 +468,9 @@ const AttendanceScreen: React.FC = () => {
         setSubmitStatus(msg);
         await loadTodayAttendance(employeeId, mode);
 
-        // Reset state after a delay to show success
         setTimeout(() => {
           setCurrentStep(1);
           setPunchType(null);
-          // Don't reset mode here, keep the current mode selected
           setSubmitStatus(null);
         }, 2000);
       }
@@ -476,7 +512,6 @@ const AttendanceScreen: React.FC = () => {
     );
   }
 
-  // --- New Attendance Status Card Component ---
   const AttendanceStatusCard: React.FC<{ record: AttendanceRecord | null; loading: boolean }> = ({ record, loading }) => {
     const statusColor = getStatusColor(record);
     const statusLabel = getStatusLabel(record);
@@ -536,7 +571,6 @@ const AttendanceScreen: React.FC = () => {
     );
   };
 
-  // --- Main Render ---
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -551,10 +585,10 @@ const AttendanceScreen: React.FC = () => {
             <Text style={styles.headerTitle}>Mark Attendance</Text>
             <Text style={styles.headerDate}>{currentDate}</Text>
           </View>
-          <View style={styles.liveBadge}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>Live</Text>
-          </View>
+          {/* Modified: Tap shows confirmation modal */}
+          <TouchableOpacity style={styles.logoutButton} onPress={showLogoutConfirmation}>
+            <Power size={22} color="#dc2626" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.stepIndicator}>
@@ -582,7 +616,6 @@ const AttendanceScreen: React.FC = () => {
             <Text style={styles.userIdTextBlack}>ID: {employeeId || 'Not Set'}</Text>
           </View>
 
-          {/* Attendance Status Card */}
           <AttendanceStatusCard record={record} loading={loadingRecord} />
 
           {location.lat && location.lng && (
@@ -644,7 +677,7 @@ const AttendanceScreen: React.FC = () => {
                   style={[styles.punchCardHorizontal, punchType === 'IN' && styles.punchInSelected]}
                   onPress={() => handleModeAndPunchSelect(mode, 'IN')}
                   activeOpacity={0.7}
-                  disabled={!!record?.punchInTime && mode !== 'REGULARIZATION'} // Disable if already punched in (unless regularization)
+                  disabled={!!record?.punchInTime && mode !== 'REGULARIZATION'}
                 >
                   <View style={[styles.punchIconContainerSmall, styles.punchInContainer]}>
                     <LogIn size={28} color="#16a34a" />
@@ -661,7 +694,7 @@ const AttendanceScreen: React.FC = () => {
                   style={[styles.punchCardHorizontal, punchType === 'OUT' && styles.punchOutSelected]}
                   onPress={() => handleModeAndPunchSelect(mode, 'OUT')}
                   activeOpacity={0.7}
-                  disabled={!record?.punchInTime && mode !== 'REGULARIZATION'} // Disable if not punched in (unless regularization)
+                  disabled={!record?.punchInTime && mode !== 'REGULARIZATION'}
                 >
                   <View style={[styles.punchIconContainerSmall, styles.punchOutContainer]}>
                     <LogOut size={28} color="#dc2626" />
@@ -723,12 +756,9 @@ const AttendanceScreen: React.FC = () => {
               </View>
             )}
 
-            {/* REMOVED: The cameraGuide view, which contained the visual rules/lines */}
-
           </View>
 
           <View style={styles.cameraBottomBarLight}>
-            {/* Instruction updated to be more general */}
             <Text style={styles.cameraInstructionLight}>
               Tap the button to capture your photo
             </Text>
@@ -758,6 +788,7 @@ const AttendanceScreen: React.FC = () => {
         </View>
       )}
 
+      {/* Confirmation Modal for Attendance Submission (Existing) */}
       <Modal visible={isConfirming} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -841,7 +872,7 @@ const AttendanceScreen: React.FC = () => {
                 onPress={handleCancelCapture}
                 disabled={submitLoading}
               >
-                <XCircle size={18} color="#374151" />
+                <XCircle size={18} color="#fff" />
                 <Text style={styles.modalButtonSecondaryText}>Retake</Text>
               </TouchableOpacity>
             </View>
@@ -849,6 +880,41 @@ const AttendanceScreen: React.FC = () => {
         </View>
       </Modal>
 
+      {/* NEW: Confirmation Modal for Logout */}
+      <Modal visible={isLogoutConfirming} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.logoutModal]}>
+            <View style={styles.modalHeader}>
+              <Power size={24} color="#dc2626" />
+              <Text style={styles.modalTitle}>Confirm Logout</Text>
+            </View>
+            <Text style={styles.modalDescription}>
+              Are you sure you want to log out? You will need to enter your credentials to access the app again.
+            </Text>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButtonSecondary, styles.modalButtonFullWidth]}
+                onPress={handleCancelLogout}
+              >
+                <XCircle size={18} color="#fff" />
+                <Text style={styles.modalButtonSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButtonPrimary, styles.modalButtonLogout, styles.modalButtonFullWidth]}
+                onPress={confirmLogout}
+              >
+                <LogOut size={18} color="#fff" />
+                <Text style={styles.modalButtonPrimaryText}>
+                  Logout
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      
       {submitStatus && submitStatus.includes('successfully') && (
         <View style={styles.successOverlay}>
           <View style={styles.successContent}>
@@ -858,11 +924,11 @@ const AttendanceScreen: React.FC = () => {
           </View>
         </View>
       )}
+      <Toast />
     </View>
   );
 };
 
-// --- Styles (updated with camera guide styles removed) ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -909,6 +975,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginRight: 12,
+  },
+  logoutButton: {
+    padding: 8,
+    marginRight: 8, // Added margin to separate from the live badge
   },
   headerContent: {
     flex: 1,
@@ -1263,7 +1333,6 @@ const styles = StyleSheet.create({
     color: '#1f2937',
     fontWeight: '600',
   },
-  // Removed cameraGuide and guideLineLight styles
   cameraBottomBarLight: {
     backgroundColor: 'rgba(255,255,255,0.9)',
     paddingHorizontal: 20,
@@ -1338,6 +1407,9 @@ const styles = StyleSheet.create({
     padding: 24,
     borderWidth: 1,
     borderColor: '#334155',
+  },
+  logoutModal: {
+    maxWidth: 340,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1421,6 +1493,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 14,
   },
+  modalButtonLogout: {
+    backgroundColor: '#dc2626', // Red for logout
+  },
   modalButtonDisabled: {
     backgroundColor: '#64748b',
     opacity: 0.6,
@@ -1446,6 +1521,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
+  modalButtonFullWidth: {
+    width: '100%',
+  },
   successOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.9)',
@@ -1466,7 +1544,6 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     textAlign: 'center',
   },
-  // --- Attendance Status Card Styles ---
   card: {
     borderRadius: 12,
     padding: 16,
@@ -1546,13 +1623,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   punchInPill: {
-    backgroundColor: '#16a34a', // Green for Punch In
+    backgroundColor: '#16a34a',
   },
   punchOutPill: {
-    backgroundColor: '#dc2626', // Red for Punch Out
+    backgroundColor: '#dc2626',
   },
   punchPendingPill: {
-    backgroundColor: '#e5e7eb', // Gray for pending
+    backgroundColor: '#e5e7eb',
   },
   punchStatusText: {
     fontSize: 16,
