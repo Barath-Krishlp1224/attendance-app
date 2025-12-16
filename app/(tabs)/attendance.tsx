@@ -18,7 +18,6 @@ import { useRouter } from 'expo-router';
 import Toast from 'react-native-toast-message';
 
 import {
-  
   MapPin,
   Camera,
   LogIn,
@@ -69,19 +68,8 @@ type CameraRef = React.ComponentRef<typeof CameraView>;
 const API_BASE_URL = 'https://check-seven-steel.vercel.app';
 
 const AttendanceScreen: React.FC = () => {
-  // Suppress warnings for navigation, as it's often used implicitly or conditionally in real apps
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const navigation = useNavigation<AttendanceScreenNavigationProp>();
   const router = useRouter();
-
-  // Suppress warnings for screenWidth, as its only purpose is to initialize and update the state setter (setScreenWidth)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const screenWidth = useState(
-    Dimensions.get('window').width
-  )[0];
-
-  // We keep the logic below because the setter `setScreenWidth` is used.
-  // We use `[0]` to get the state value without destructuring the setter in the same line.
 
   const [, setScreenWidth] = useState(
     Dimensions.get('window').width
@@ -272,7 +260,6 @@ const AttendanceScreen: React.FC = () => {
   };
   
   const getModeColors = (m: AttendanceMode) => {
-    // Cyan/Blue for ALL Modes
     const ALL_MODE_COLORS = { 
         borderColor: '#06b6d4', 
         backgroundColor: '#06b6d4', 
@@ -1271,7 +1258,6 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
   },
   punchInContainer: {
     backgroundColor: '#dcfce7',
