@@ -1,0 +1,4 @@
+/Users/barath/Desktop/Lemonpay/attendancemobile app/attendance-app/android/app/.cxx/Debug/1dx5t5e1/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/foo.dir
+/Users/barath/Desktop/Lemonpay/attendancemobile app/attendance-app/android/app/.cxx/Debug/1dx5t5e1/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/boo.dir
+/Users/barath/Desktop/Lemonpay/attendancemobile app/attendance-app/android/app/.cxx/Debug/1dx5t5e1/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/edit_cache.dir
+/Users/barath/Desktop/Lemonpay/attendancemobile app/attendance-app/android/app/.cxx/Debug/1dx5t5e1/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/rebuild_cache.dir

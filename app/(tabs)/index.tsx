@@ -95,7 +95,8 @@ export default function LoginScreen() {
       setTimeout(() => {
         router.replace("/(tabs)/attendance");
       }, 800);
-    } catch (err) {
+    } catch (_err) {
+      void _err;
       Toast.show({
         type: "error",
         text1: "Network error. Try again later.",

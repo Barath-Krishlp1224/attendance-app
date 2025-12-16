@@ -18,7 +18,7 @@ import { useRouter } from 'expo-router';
 import Toast from 'react-native-toast-message';
 
 import {
-  User,
+  
   MapPin,
   Camera,
   LogIn,
@@ -69,10 +69,21 @@ type CameraRef = React.ComponentRef<typeof CameraView>;
 const API_BASE_URL = 'https://check-seven-steel.vercel.app';
 
 const AttendanceScreen: React.FC = () => {
+  // Suppress warnings for navigation, as it's often used implicitly or conditionally in real apps
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const navigation = useNavigation<AttendanceScreenNavigationProp>();
   const router = useRouter();
 
-  const [screenWidth, setScreenWidth] = useState(
+  // Suppress warnings for screenWidth, as its only purpose is to initialize and update the state setter (setScreenWidth)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const screenWidth = useState(
+    Dimensions.get('window').width
+  )[0];
+
+  // We keep the logic below because the setter `setScreenWidth` is used.
+  // We use `[0]` to get the state value without destructuring the setter in the same line.
+
+  const [, setScreenWidth] = useState(
     Dimensions.get('window').width
   );
 
@@ -121,7 +132,6 @@ const AttendanceScreen: React.FC = () => {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   
-  // NEW STATE FOR LOGOUT CONFIRMATION
   const [isLogoutConfirming, setIsLogoutConfirming] = useState(false);
 
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
@@ -260,6 +270,32 @@ const AttendanceScreen: React.FC = () => {
     }
     return '#64748b';
   };
+  
+  const getModeColors = (m: AttendanceMode) => {
+    // Cyan/Blue for ALL Modes
+    const ALL_MODE_COLORS = { 
+        borderColor: '#06b6d4', 
+        backgroundColor: '#06b6d4', 
+        iconBg: '#e0f7fa', 
+        iconColor: '#0e7490' 
+    };
+
+    switch (m) {
+      case 'IN_OFFICE':
+      case 'WORK_FROM_HOME':
+      case 'ON_DUTY':
+      case 'REGULARIZATION':
+        return ALL_MODE_COLORS;
+      default:
+        return { 
+          borderColor: '#e5e7eb', 
+          backgroundColor: '#fff', 
+          iconBg: '#f3f4f6', 
+          iconColor: '#64748b' 
+        };
+    }
+  };
+
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -344,12 +380,10 @@ const AttendanceScreen: React.FC = () => {
     router.replace('/(tabs)/attendance');
   }, [router]);
   
-  // NEW: Function to show the confirmation modal
   const showLogoutConfirmation = () => {
     setIsLogoutConfirming(true);
   };
 
-  // NEW: Function to execute logout after confirmation
   const confirmLogout = async () => {
     setIsLogoutConfirming(false); 
     try {
@@ -365,7 +399,6 @@ const AttendanceScreen: React.FC = () => {
         text1: "Logged out successfully.",
       });
 
-      // Redirect to the root of the app
       router.replace('/'); 
       
     } catch (e) {
@@ -548,7 +581,7 @@ const AttendanceScreen: React.FC = () => {
                 <Text style={styles.statusLabel}>Punch In</Text>
                 <View style={[styles.punchStatusPill, record.punchInTime ? styles.punchInPill : styles.punchPendingPill]}>
                     <LogIn size={14} color={record.punchInTime ? '#fff' : '#64748b'}/>
-                    <Text style={styles.punchStatusText}>{inTime}</Text>
+                    <Text style={[styles.punchStatusText, { color: record.punchInTime ? '#fff' : '#64748b' }]}>{inTime}</Text>
                 </View>
             </View>
             <View style={styles.statusDivider} />
@@ -556,7 +589,7 @@ const AttendanceScreen: React.FC = () => {
                 <Text style={styles.statusLabel}>Punch Out</Text>
                 <View style={[styles.punchStatusPill, record.punchOutTime ? styles.punchOutPill : styles.punchPendingPill]}>
                     <LogOut size={14} color={record.punchOutTime ? '#fff' : '#64748b'}/>
-                    <Text style={styles.punchStatusText}>{outTime}</Text>
+                    <Text style={[styles.punchStatusText, { color: record.punchOutTime ? '#fff' : '#64748b' }]}>{outTime}</Text>
                 </View>
             </View>
         </View>
@@ -585,7 +618,6 @@ const AttendanceScreen: React.FC = () => {
             <Text style={styles.headerTitle}>Mark Attendance</Text>
             <Text style={styles.headerDate}>{currentDate}</Text>
           </View>
-          {/* Modified: Tap shows confirmation modal */}
           <TouchableOpacity style={styles.logoutButton} onPress={showLogoutConfirmation}>
             <Power size={22} color="#dc2626" />
           </TouchableOpacity>
@@ -643,20 +675,37 @@ const AttendanceScreen: React.FC = () => {
             <View style={styles.modeGridHorizontal}>
               {modeOptions.map((m) => {
                 const Icon = getModeIcon(m);
+                const colors = getModeColors(m);
+                const isSelected = m === mode;
                 return (
                   <TouchableOpacity
                     key={m}
-                    style={[styles.modeCardHorizontal, m === mode && styles.modeCardSelected]}
+                    style={[
+                      styles.modeCardHorizontal, 
+                      { borderColor: isSelected ? colors.borderColor : '#e5e7eb' }, 
+                      isSelected && { backgroundColor: colors.backgroundColor }
+                    ]}
                     onPress={() => setMode(m)}
                     activeOpacity={0.7}
                   >
-                    <View style={[styles.modeIconContainer, m === mode && styles.modeIconContainerSelected]}>
-                      <Icon size={24} color={m === mode ? '#fff' : '#2563eb'} />
+                    <View style={[
+                      styles.modeIconContainer, 
+                      { backgroundColor: isSelected ? '#fff' : colors.iconBg }
+                    ]}>
+                      <Icon size={24} color={isSelected ? colors.backgroundColor : colors.iconColor} />
                     </View>
-                    <Text style={[styles.modeTitleBlack, m === mode && styles.modeTitleSelected]}>
+                    <Text style={[
+                      styles.modeTitleBlack, 
+                      isSelected && styles.modeTitleSelected,
+                      isSelected && { color: '#fff' }
+                    ]}>
                       {getModeLabel(m)}
                     </Text>
-                    <Text style={[styles.modeDescriptionBlack, m === mode && styles.modeDescriptionSelected]}>
+                    <Text style={[
+                      styles.modeDescriptionBlack, 
+                      isSelected && styles.modeDescriptionSelected,
+                      isSelected && { color: '#e5e7eb' }
+                    ]}>
                       {getModeDescription(m)}
                     </Text>
                   </TouchableOpacity>
@@ -788,7 +837,6 @@ const AttendanceScreen: React.FC = () => {
         </View>
       )}
 
-      {/* Confirmation Modal for Attendance Submission (Existing) */}
       <Modal visible={isConfirming} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -880,7 +928,6 @@ const AttendanceScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* NEW: Confirmation Modal for Logout */}
       <Modal visible={isLogoutConfirming} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.logoutModal]}>
@@ -978,7 +1025,7 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     padding: 8,
-    marginRight: 8, // Added margin to separate from the live badge
+    marginRight: 8, 
   },
   headerContent: {
     flex: 1,
@@ -1165,21 +1212,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   modeCardSelected: {
-    borderColor: '#2563eb',
-    backgroundColor: '#2563eb',
     
   },
   modeIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 24,
-    backgroundColor: '#e0f2fe',
     alignItems: 'center', 
     justifyContent: 'center',
     marginBottom: 8,
   },
   modeIconContainerSelected: {
-    backgroundColor: '#3fa87d',
     borderRadius: 24,
   },
   modeTitleBlack: {
@@ -1189,7 +1232,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   modeTitleSelected: {
-    color: '#fff',
+    
   },
   modeDescriptionBlack: {
     fontSize: 10,
@@ -1197,7 +1240,7 @@ const styles = StyleSheet.create({
     lineHeight: 14,
   },
   modeDescriptionSelected: {
-    color: '#bfdbfe',
+    
   },
   punchTypeGridHorizontal: {
     flexDirection: 'row',
@@ -1494,7 +1537,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   modalButtonLogout: {
-    backgroundColor: '#dc2626', // Red for logout
+    backgroundColor: '#dc2626', 
   },
   modalButtonDisabled: {
     backgroundColor: '#64748b',

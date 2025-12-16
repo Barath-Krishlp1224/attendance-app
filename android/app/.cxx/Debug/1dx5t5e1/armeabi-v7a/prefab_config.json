@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "prefabPath": "/Users/barath/.gradle/caches/modules-2/files-2.1/com.google.prefab/cli/2.1.0/aa32fec809c44fa531f01dcfb739b5b3304d3050/cli-2.1.0-all.jar",
+  "packages": [
+    "/Users/barath/.gradle/caches/8.14.3/transforms/8bca444e06763d64457172ec6b80f8aa/transformed/react-android-0.81.5-debug/prefab",
+    "/Users/barath/Desktop/Lemonpay/attendancemobile app/attendance-app/node_modules/react-native-reanimated/android/build/intermediates/prefab_package/debug/prefab",
+    "/Users/barath/Desktop/Lemonpay/attendancemobile app/attendance-app/node_modules/react-native-worklets/android/build/intermediates/prefab_package/debug/prefab",
+    "/Users/barath/.gradle/caches/8.14.3/transforms/e5d19bd6b3826afe5eb577927188e196/transformed/hermes-android-0.81.5-debug/prefab",
+    "/Users/barath/.gradle/caches/8.14.3/transforms/e2ac816cc322e0622c8e36eeb217f096/transformed/fbjni-0.7.0/prefab"
+  ]
+}
