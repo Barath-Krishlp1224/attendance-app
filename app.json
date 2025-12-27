@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "attendance-app",
+    "name": "Lemonpay Attendance",
     "slug": "attendance-app",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/lemon.png",
+    "icon": "./assets/images/check.png",
     "scheme": "attendanceapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -13,8 +13,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/lemon.png",
-        "monochromeImage": "./assets/images/lemon.png",
+        "foregroundImage": "./assets/images/check.png",
+        "monochromeImage": "./assets/images/check.png",
         "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
@@ -30,7 +30,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/lemon.png",
+          "image": "./assets/images/check.png",
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
           "dark": {
@@ -38,7 +38,8 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
