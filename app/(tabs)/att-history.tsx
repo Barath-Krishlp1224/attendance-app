@@ -38,6 +38,26 @@ const AttendanceHistoryScreen = () => {
   const currentYear = new Date().getFullYear();
   const currentMonthShort = new Date().toLocaleDateString('en-US', { month: 'short' });
 
+  // --- NEW: LOGIC FOR MONDAY / CURRENT WEEK FILTER ---
+  const getCurrentWeekRange = () => {
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 (Sun) to 6 (Sat)
+    
+    // Calculate Monday of the current week
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const currentMonday = new Date(today);
+    currentMonday.setDate(today.getDate() + diffToMonday);
+    currentMonday.setHours(0, 0, 0, 0);
+
+    // End of current week (Saturday)
+    const currentSaturday = new Date(currentMonday);
+    currentSaturday.setDate(currentMonday.getDate() + 5);
+    currentSaturday.setHours(23, 59, 59, 999);
+
+    return { start: currentMonday, end: currentSaturday };
+  };
+
+  const [useWeekFilter, setUseWeekFilter] = useState(true); 
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthShort);
   
@@ -70,15 +90,24 @@ const AttendanceHistoryScreen = () => {
 
   const filteredList = useMemo(() => {
     let list = [...attendanceList];
+    const { start, end } = getCurrentWeekRange();
+
     list = list.filter(item => {
       const d = new Date(item.date);
       if (isNaN(d.getTime())) return false;
+
+      // If Monday/Week filter is active, only show current week
+      if (useWeekFilter) {
+        return d >= start && d <= end;
+      }
+
+      // Default Year/Month filtering
       const yearMatch = d.getFullYear() === selectedYear;
       const monthMatch = selectedMonth === "All" || d.toLocaleDateString('en-US', { month: 'short' }) === selectedMonth;
       return yearMatch && monthMatch;
     });
     return list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [attendanceList, selectedYear, selectedMonth]);
+  }, [attendanceList, selectedYear, selectedMonth, useWeekFilter]);
 
   const stats = useMemo(() => {
     const present = attendanceList.filter(a => a.present).length;
@@ -93,7 +122,7 @@ const AttendanceHistoryScreen = () => {
 
   const totalPages = Math.ceil(filteredList.length / ITEMS_PER_PAGE);
 
-  useEffect(() => { setCurrentPage(1); }, [selectedMonth, selectedYear]);
+  useEffect(() => { setCurrentPage(1); }, [selectedMonth, selectedYear, useWeekFilter]);
 
   const StatCard = ({ icon, label, val, color }: any) => (
     <View style={styles.statCard}>
@@ -103,73 +132,93 @@ const AttendanceHistoryScreen = () => {
     </View>
   );
 
-  const HeaderComponent = () => (
-    <View style={styles.headerContent}>
-      <View style={styles.titleContainer}>
-        <Text style={styles.title}>Attendance Logs</Text>
-        <Text style={styles.subtitle}>Showing {selectedMonth === "All" ? "Full Year" : selectedMonth} {selectedYear}</Text>
+  const HeaderComponent = () => {
+    const { start, end } = getCurrentWeekRange();
+    const weekLabel = `${start.getDate()} ${start.toLocaleDateString('en-US', {month:'short'})} - ${end.getDate()} ${end.toLocaleDateString('en-US', {month:'short'})}`;
+
+    return (
+      <View style={styles.headerContent}>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title}>Attendance Logs</Text>
+          <Text style={styles.subtitle}>
+            {useWeekFilter ? `Current Week (${weekLabel})` : `Showing ${selectedMonth === "All" ? "Full Year" : selectedMonth} ${selectedYear}`}
+          </Text>
+        </View>
+        
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
+          <StatCard 
+            icon={<UserCheck size={20} color="#2563eb" />} 
+            label="Present" 
+            val={`${stats.present}/${TOTAL_WORK_DAYS}`} 
+            color="#2563eb" 
+          />
+          <StatCard icon={<Activity size={20} color="#dc2626" />} label="Absent" val={stats.absent} color="#dc2626" />
+          <StatCard icon={<Clock size={20} color="#7c3aed" />} label="Rate %" val={`${stats.rate}%`} color="#7c3aed" />
+          <StatCard icon={<Target size={20} color="#0891b2" />} label="Logs" val={stats.totalLogs} color="#0891b2" />
+        </ScrollView>
+
+        <View style={styles.filterRow}>
+          <TouchableOpacity 
+            style={[styles.filterChip, useWeekFilter && {borderColor: '#2563eb', backgroundColor: '#eff6ff'}]} 
+            onPress={() => setUseWeekFilter(!useWeekFilter)}
+          >
+            <Clock size={14} color={useWeekFilter ? "#2563eb" : "#64748b"} />
+            <Text style={[styles.filterChipText, useWeekFilter && {color: '#2563eb'}]}>Current Week</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.filterChip} 
+            onPress={() => { setModalMode('year'); setModalVisible(true); setUseWeekFilter(false); }}
+          >
+            <Calendar size={14} color="#2563eb" />
+            <Text style={styles.filterChipText}>{selectedYear}</Text>
+            <ChevronDown size={14} color="#64748b" />
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.filterChip} 
+            onPress={() => { setModalMode('month'); setModalVisible(true); setUseWeekFilter(false); }}
+          >
+            <Filter size={14} color="#2563eb" />
+            <Text style={styles.filterChipText}>{selectedMonth}</Text>
+            <ChevronDown size={14} color="#64748b" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.recordsHeader}>
+          <Text style={styles.sectionLabel}>Records Found</Text>
+          <View style={styles.recordsBadge}><Text style={styles.recordsBadgeText}>{filteredList.length} items</Text></View>
+        </View>
+
+        <Modal visible={isModalVisible} transparent animationType="fade">
+          <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Select {modalMode === 'year' ? 'Year' : 'Month'}</Text>
+              <ScrollView style={{maxHeight: 400}}>
+                {(modalMode === 'year' ? yearOptions : monthOptions).map((item) => (
+                  <TouchableOpacity 
+                    key={item.toString()} 
+                    style={[styles.modalOption, (modalMode === 'year' ? selectedYear === item : selectedMonth === item) && styles.modalOptionSelected]}
+                    onPress={() => {
+                      if (modalMode === 'year') {
+                        setSelectedYear(Number(item));
+                        setModalMode('month');
+                      } else {
+                        setSelectedMonth(item.toString());
+                        setModalVisible(false);
+                      }
+                    }}
+                  >
+                    <Text style={[styles.modalOptionText, (modalMode === 'year' ? selectedYear === item : selectedMonth === item) && styles.modalOptionTextSelected]}>{item}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </Pressable>
+        </Modal>
       </View>
-      
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
-        {/* UPDATED: Displays Present Count out of 320 */}
-        <StatCard 
-          icon={<UserCheck size={20} color="#2563eb" />} 
-          label="Present" 
-          val={`${stats.present}/${TOTAL_WORK_DAYS}`} 
-          color="#2563eb" 
-        />
-        <StatCard icon={<Activity size={20} color="#dc2626" />} label="Absent" val={stats.absent} color="#dc2626" />
-        <StatCard icon={<Clock size={20} color="#7c3aed" />} label="Rate %" val={`${stats.rate}%`} color="#7c3aed" />
-        <StatCard icon={<Target size={20} color="#0891b2" />} label="Logs" val={stats.totalLogs} color="#0891b2" />
-      </ScrollView>
-
-      <View style={styles.filterRow}>
-        <TouchableOpacity style={styles.filterChip} onPress={() => { setModalMode('year'); setModalVisible(true); }}>
-          <Calendar size={14} color="#2563eb" />
-          <Text style={styles.filterChipText}>Year: {selectedYear}</Text>
-          <ChevronDown size={14} color="#64748b" />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.filterChip} onPress={() => { setModalMode('month'); setModalVisible(true); }}>
-          <Filter size={14} color="#2563eb" />
-          <Text style={styles.filterChipText}>Month: {selectedMonth}</Text>
-          <ChevronDown size={14} color="#64748b" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.recordsHeader}>
-        <Text style={styles.sectionLabel}>Records Found</Text>
-        <View style={styles.recordsBadge}><Text style={styles.recordsBadgeText}>{filteredList.length} items</Text></View>
-      </View>
-
-      <Modal visible={isModalVisible} transparent animationType="fade">
-        <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Select {modalMode === 'year' ? 'Year' : 'Month'}</Text>
-            <ScrollView style={{maxHeight: 400}}>
-              {(modalMode === 'year' ? yearOptions : monthOptions).map((item) => (
-                <TouchableOpacity 
-                  key={item.toString()} 
-                  style={[styles.modalOption, (modalMode === 'year' ? selectedYear === item : selectedMonth === item) && styles.modalOptionSelected]}
-                  onPress={() => {
-                    if (modalMode === 'year') {
-                      setSelectedYear(Number(item));
-                      setModalMode('month');
-                    } else {
-                      setSelectedMonth(item.toString());
-                      setModalVisible(false);
-                    }
-                  }}
-                >
-                  <Text style={[styles.modalOptionText, (modalMode === 'year' ? selectedYear === item : selectedMonth === item) && styles.modalOptionTextSelected]}>{item}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </Pressable>
-      </Modal>
-    </View>
-  );
+    );
+  };
 
   const PaginationControls = () => (
     <View style={styles.paginationContainer}>
@@ -231,7 +280,7 @@ const AttendanceHistoryScreen = () => {
           <View style={styles.emptyContainer}>
             <AlertCircle size={40} color="#cbd5e1" />
             <Text style={styles.emptyTitle}>No Records Found</Text>
-            <Text style={styles.emptyText}>No data for {selectedMonth} {selectedYear}.</Text>
+            <Text style={styles.emptyText}>No data for the selected week/period.</Text>
           </View>
         }
       />
@@ -249,18 +298,18 @@ const styles = StyleSheet.create({
   statsScroll: { paddingHorizontal: 20, gap: 10 },
   statCard: { 
     backgroundColor: '#fff', 
-    minWidth: 120, // Increased minWidth to fit "XX/320"
+    minWidth: 120, 
     padding: 15, 
     borderRadius: 16, 
     alignItems: 'center', 
     elevation: 1 
   },
   iconCircle: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  statVal: { fontSize: 16, fontWeight: '800', color: '#1e293b' }, // Slightly smaller font to ensure long text fits
+  statVal: { fontSize: 16, fontWeight: '800', color: '#1e293b' }, 
   statLabel: { fontSize: 10, color: '#94a3b8', textTransform: 'uppercase' },
-  filterRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginTop: 20 },
-  filterChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 15, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' },
-  filterChipText: { fontSize: 14, fontWeight: '600', color: '#1e293b' },
+  filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginTop: 20 },
+  filterChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', gap: 4 },
+  filterChipText: { fontSize: 11, fontWeight: '700', color: '#1e293b' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { backgroundColor: '#fff', width: '80%', borderRadius: 20, padding: 20 },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#1e293b', marginBottom: 15, textAlign: 'center' },
