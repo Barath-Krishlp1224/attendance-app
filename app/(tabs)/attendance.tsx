@@ -46,7 +46,7 @@ const BRANCHES = [
   { id: 1, name: "Lp Saaram Office", lat: 11.939198361614558, lon: 79.81654494108358, radius: 500 },
   { id: 2, name: "Lp Tidel Office", lat: 11.995967441546023, lon: 79.76744798792814, radius: 2000 },
 ];
-const API_BASE_URL = 'https://check-seven-steel.vercel.app';
+const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3;

@@ -28,7 +28,7 @@ type Team =
   | "Admin & Operations"
   | "TL Accountant";
 
-const API_BASE_URL = "https://check-seven-steel.vercel.app";
+const API_BASE_URL = "https://lemonpay-portal.vercel.app/";
 
 export default function LoginScreen() {
   const router = useRouter();

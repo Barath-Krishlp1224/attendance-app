@@ -30,7 +30,7 @@ import {
 } from "lucide-react-native";
 
 const { width } = Dimensions.get("window");
-const API_BASE_URL = 'https://check-seven-steel.vercel.app';
+const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
 const ANNUAL_TOTAL = 24;
 
 const LeaveDashboard = () => {

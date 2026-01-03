@@ -26,7 +26,7 @@ import {
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://check-seven-steel.vercel.app';
+const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
 const TOTAL_WORK_DAYS = 320;
 const ITEMS_PER_PAGE = 5;
 
