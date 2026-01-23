@@ -22,18 +22,16 @@ import {
   LogIn,
   LogOut,
   Clock,
-  Calendar,
-  Home as HomeIcon,
-  Wifi,
-  Briefcase,
-  FileText,
+  
   CheckCircle,
-  Clock3,
+  
+  Users,
   Power,
   CalendarDays,
   History,
   Building2,
   Camera,
+  PartyPopper,
   ChevronLeft,
   User,
   Navigation,
@@ -43,8 +41,8 @@ const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // --- Constants & Helpers ---
 const BRANCHES = [
-  { id: 1, name: "Lp Tidel Office", lat: 11.939198361614558, lon: 79.81654494108358, radius: 2000 },
-  { id: 2, name: "Lp Saaram Office", lat: 11.995967441546023, lon: 79.76744798792814, radius: 500 },
+  { id: 1, name: "Lp Saaram Office", lat: 11.939198361614558, lon: 79.81654494108358, radius: 500 },
+  { id: 2, name: "Lp Tidel Office", lat: 11.995967441546023, lon: 79.76744798792814, radius: 1000 },
 ];
 const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
 
@@ -76,7 +74,6 @@ const getTimeStatus = (type: PunchType) => {
 
 // --- Types ---
 type PunchType = 'IN' | 'OUT';
-type AttendanceMode = 'IN_OFFICE' | 'WORK_FROM_HOME' | 'ON_DUTY' | 'REGULARIZATION';
 
 interface AttendanceRecord {
   punchInTime?: string;
@@ -103,7 +100,6 @@ const AttendanceScreen: React.FC = () => {
   const [name, setName] = useState<string | null>(null);
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [punchType, setPunchType] = useState<PunchType | null>(null);
-  const [mode, setMode] = useState<AttendanceMode>('IN_OFFICE');
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
@@ -112,14 +108,12 @@ const AttendanceScreen: React.FC = () => {
   const [isLogoutConfirming, setIsLogoutConfirming] = useState(false);
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
 
-  const modeOptions: AttendanceMode[] = ['IN_OFFICE', 'WORK_FROM_HOME', 'ON_DUTY', 'REGULARIZATION'];
-
-  const loadTodayAttendance = useCallback(async (empId: string, currentMode: AttendanceMode) => {
+  const loadTodayAttendance = useCallback(async (empId: string) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/attendance/today`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employeeId: empId, mode: currentMode }),
+        body: JSON.stringify({ employeeId: empId }),
       });
       const json = await res.json();
       setRecord(json.record || null);
@@ -146,8 +140,8 @@ const AttendanceScreen: React.FC = () => {
   }, [cameraPermission, requestCameraPermission]);
 
   useEffect(() => {
-    if (employeeId) loadTodayAttendance(employeeId, mode);
-  }, [employeeId, mode, loadTodayAttendance]);
+    if (employeeId) loadTodayAttendance(employeeId);
+  }, [employeeId, loadTodayAttendance]);
 
   const checkBranchDistance = (branch: Branch) => {
     if (!location.lat || !location.lng) return { inRange: false, distance: 0 };
@@ -191,7 +185,7 @@ const AttendanceScreen: React.FC = () => {
   };
 
   const handleConfirmSubmit = async () => {
-    if (!previewImage || !employeeId || !punchType || !mode) return;
+    if (!previewImage || !employeeId || !punchType || !selectedBranch) return;
 
     try {
       setSubmitLoading(true);
@@ -204,7 +198,6 @@ const AttendanceScreen: React.FC = () => {
           latitude: location.lat,
           longitude: location.lng,
           punchType,
-          mode,
           branchId: selectedBranch?.id,
           branchName: selectedBranch?.name,
         }),
@@ -214,7 +207,7 @@ const AttendanceScreen: React.FC = () => {
         Toast.show({ type: 'error', text1: json.error || 'Failed' });
       } else {
         setSubmitStatus('successfully recorded');
-        await loadTodayAttendance(employeeId, mode);
+        await loadTodayAttendance(employeeId);
         setTimeout(() => {
           setCurrentStep(1);
           setPunchType(null);
@@ -258,7 +251,7 @@ const AttendanceScreen: React.FC = () => {
               <View style={[styles.progressFill, { width: `${(currentStep / 3) * 100}%` }]} />
             </View>
             <View style={styles.stepLabels}>
-              <Text style={[styles.stepLabel, currentStep >= 1 && styles.stepLabelActive]}>Setup</Text>
+              <Text style={[styles.stepLabel, currentStep >= 1 && styles.stepLabelActive]}>Branch</Text>
               <Text style={[styles.stepLabel, currentStep >= 2 && styles.stepLabelActive]}>Action</Text>
               <Text style={[styles.stepLabel, currentStep >= 3 && styles.stepLabelActive]}>Verify</Text>
             </View>
@@ -266,7 +259,7 @@ const AttendanceScreen: React.FC = () => {
         </View>
       )}
 
-      {/* STEP 1: Setup */}
+      {/* STEP 1: Branch Selection */}
       {currentStep === 1 && (
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* User Info Card */}
@@ -322,33 +315,6 @@ const AttendanceScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Work Mode Selection */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Select Work Mode</Text>
-            <View style={styles.modeGrid}>
-              {modeOptions.map((m) => {
-                const Icon = (m === 'IN_OFFICE' ? Building2 : m === 'WORK_FROM_HOME' ? HomeIcon : m === 'ON_DUTY' ? Briefcase : FileText);
-                const isSelected = m === mode;
-                return (
-                  <TouchableOpacity
-                    key={m}
-                    style={[styles.modeCard, isSelected && styles.modeCardActive]}
-                    onPress={() => { setMode(m); setSelectedBranch(null); }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.modeIconBox, isSelected && styles.modeIconBoxActive]}>
-                      <Icon size={24} color={isSelected ? "#2563eb" : "#64748b"} />
-                    </View>
-                    <Text style={[styles.modeTitle, isSelected && styles.modeTitleActive]}>
-                      {m.replace(/_/g, ' ')}
-                    </Text>
-                    {isSelected && <View style={styles.selectedIndicator} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
           {/* Conditional Content */}
           {record?.punchInTime && record?.punchOutTime ? (
             <View style={styles.completedContainer}>
@@ -358,7 +324,7 @@ const AttendanceScreen: React.FC = () => {
               <Text style={styles.completedTitle}>All Done!</Text>
               <Text style={styles.completedSubtitle}>Attendance completed for today</Text>
             </View>
-          ) : mode === 'IN_OFFICE' ? (
+          ) : (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Choose Your Branch</Text>
               {BRANCHES.map((branch) => {
@@ -389,22 +355,6 @@ const AttendanceScreen: React.FC = () => {
                   </TouchableOpacity>
                 );
               })}
-            </View>
-          ) : (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Punch Attendance</Text>
-              <TouchableOpacity
-                style={styles.punchButton}
-                onPress={() => handlePunchTypeSelect(record?.punchInTime ? 'OUT' : 'IN')}
-                activeOpacity={0.8}
-              >
-                <View style={styles.punchButtonIcon}>
-                  {record?.punchInTime ? <LogOut size={28} color="#fff" /> : <LogIn size={28} color="#fff" />}
-                </View>
-                <Text style={styles.punchButtonText}>
-                  {record?.punchInTime ? 'Check Out' : 'Check In'}
-                </Text>
-              </TouchableOpacity>
             </View>
           )}
         </ScrollView>
@@ -448,7 +398,7 @@ const AttendanceScreen: React.FC = () => {
           
           <SafeAreaView style={styles.cameraOverlay}>
             <TouchableOpacity 
-              onPress={() => setCurrentStep(mode === 'IN_OFFICE' ? 2 : 1)} 
+              onPress={() => setCurrentStep(2)} 
               style={styles.cameraBack}
             >
               <ChevronLeft size={24} color="#fff" />
@@ -485,10 +435,21 @@ const AttendanceScreen: React.FC = () => {
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
             <CalendarDays size={22} color="#64748b" />
             <Text style={styles.footerLabel}>Leaves</Text>
+<Text style={styles.footerLabel}>& Permissions</Text>
+
           </TouchableOpacity>
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
             <History size={22} color="#64748b" />
             <Text style={styles.footerLabel}>History</Text>
+          </TouchableOpacity>
+            <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/employees')}>
+             <Users size={22} color="#64748b" />
+
+            <Text style={styles.footerLabel}>Employees</Text>
+          </TouchableOpacity>
+            <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
+            <PartyPopper size={22} color="#64748b" />
+            <Text style={styles.footerLabel}>Hoidays</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -799,55 +760,6 @@ const styles = StyleSheet.create({
     marginBottom: 16 
   },
 
-  // Mode Grid
-  modeGrid: { 
-    flexDirection: 'row', 
-    flexWrap: 'wrap', 
-    gap: 12 
-  },
-  modeCard: { 
-    width: (SCREEN_WIDTH - 52) / 2, 
-    backgroundColor: '#fff', 
-    borderRadius: 16, 
-    padding: 16, 
-    borderWidth: 2, 
-    borderColor: '#e2e8f0',
-    position: 'relative',
-  },
-  modeCardActive: { 
-    borderColor: '#2563eb', 
-    backgroundColor: '#eff6ff' 
-  },
-  modeIconBox: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: 12, 
-    backgroundColor: '#f8fafc', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginBottom: 12 
-  },
-  modeIconBoxActive: { 
-    backgroundColor: '#fff' 
-  },
-  modeTitle: { 
-    fontSize: 13, 
-    fontWeight: '700', 
-    color: '#475569' 
-  },
-  modeTitleActive: { 
-    color: '#2563eb' 
-  },
-  selectedIndicator: { 
-    position: 'absolute', 
-    top: 8, 
-    right: 8, 
-    width: 8, 
-    height: 8, 
-    borderRadius: 4, 
-    backgroundColor: '#2563eb' 
-  },
-
   // Branch Items
   branchItem: { 
     flexDirection: 'row', 
@@ -1137,7 +1049,6 @@ const styles = StyleSheet.create({
     fontSize: 11, 
     fontWeight: '600', 
     color: '#64748b', 
-    marginTop: 4 
   },
 
   // Modal Styles
