@@ -1,40 +1,47 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  SafeAreaView, 
-  ActivityIndicator,
-  RefreshControl,
-  TouchableOpacity,
-  ScrollView,
-  Modal,
-  Pressable
-} from 'react-native';
-import { 
-  UserCheck, 
-  Clock, 
-  AlertCircle, 
-  Filter, 
-  Activity, 
-  Target, 
-  ChevronLeft, 
-  ChevronRight,
-  ChevronDown,
-  Calendar
-} from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import {
+  Activity,
+  AlertCircle,
+  Calendar,
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Filter,
+  Fingerprint,
+  History as HistoryIcon,
+  MessageSquare,
+  PartyPopper,
+  Target,
+  UserCheck
+} from 'lucide-react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
+} from 'react-native';
 
 const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
 const TOTAL_WORK_DAYS = 320;
 const ITEMS_PER_PAGE = 5;
 
 const AttendanceHistoryScreen = () => {
+  const router = useRouter();
   const [attendanceList, setAttendanceList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   const currentYear = new Date().getFullYear();
   const currentMonthShort = new Date().toLocaleDateString('en-US', { month: 'short' });
 
@@ -42,7 +49,7 @@ const AttendanceHistoryScreen = () => {
   const getCurrentWeekRange = () => {
     const today = new Date();
     const dayOfWeek = today.getDay(); // 0 (Sun) to 6 (Sat)
-    
+
     // Calculate Monday of the current week
     const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const currentMonday = new Date(today);
@@ -57,10 +64,10 @@ const AttendanceHistoryScreen = () => {
     return { start: currentMonday, end: currentSaturday };
   };
 
-  const [useWeekFilter, setUseWeekFilter] = useState(true); 
+  const [useWeekFilter, setUseWeekFilter] = useState(true);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthShort);
-  
+
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'year' | 'month'>('year');
@@ -134,23 +141,24 @@ const AttendanceHistoryScreen = () => {
 
   const HeaderComponent = () => {
     const { start, end } = getCurrentWeekRange();
-    const weekLabel = `${start.getDate()} ${start.toLocaleDateString('en-US', {month:'short'})} - ${end.getDate()} ${end.toLocaleDateString('en-US', {month:'short'})}`;
+    const weekLabel = `${start.getDate()} ${start.toLocaleDateString('en-US', { month: 'short' })} - ${end.getDate()} ${end.toLocaleDateString('en-US', { month: 'short' })}`;
 
     return (
       <View style={styles.headerContent}>
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>Attendance Logs</Text>
+          <Text style={styles.title}>Unity App</Text>
+          <Text style={styles.subtitle}>Attendance Logs</Text>
           <Text style={styles.subtitle}>
             {useWeekFilter ? `Current Week (${weekLabel})` : `Showing ${selectedMonth === "All" ? "Full Year" : selectedMonth} ${selectedYear}`}
           </Text>
         </View>
-        
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
-          <StatCard 
-            icon={<UserCheck size={20} color="#2563eb" />} 
-            label="Present" 
-            val={`${stats.present}/${TOTAL_WORK_DAYS}`} 
-            color="#2563eb" 
+          <StatCard
+            icon={<UserCheck size={20} color="#2563eb" />}
+            label="Present"
+            val={`${stats.present}/${TOTAL_WORK_DAYS}`}
+            color="#2563eb"
           />
           <StatCard icon={<Activity size={20} color="#dc2626" />} label="Absent" val={stats.absent} color="#dc2626" />
           <StatCard icon={<Clock size={20} color="#7c3aed" />} label="Rate %" val={`${stats.rate}%`} color="#7c3aed" />
@@ -158,16 +166,16 @@ const AttendanceHistoryScreen = () => {
         </ScrollView>
 
         <View style={styles.filterRow}>
-          <TouchableOpacity 
-            style={[styles.filterChip, useWeekFilter && {borderColor: '#2563eb', backgroundColor: '#eff6ff'}]} 
+          <TouchableOpacity
+            style={[styles.filterChip, useWeekFilter && { borderColor: '#2563eb', backgroundColor: '#eff6ff' }]}
             onPress={() => setUseWeekFilter(!useWeekFilter)}
           >
             <Clock size={14} color={useWeekFilter ? "#2563eb" : "#64748b"} />
-            <Text style={[styles.filterChipText, useWeekFilter && {color: '#2563eb'}]}>Current Week</Text>
+            <Text style={[styles.filterChipText, useWeekFilter && { color: '#2563eb' }]}>Current Week</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.filterChip} 
+          <TouchableOpacity
+            style={styles.filterChip}
             onPress={() => { setModalMode('year'); setModalVisible(true); setUseWeekFilter(false); }}
           >
             <Calendar size={14} color="#2563eb" />
@@ -175,8 +183,8 @@ const AttendanceHistoryScreen = () => {
             <ChevronDown size={14} color="#64748b" />
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={styles.filterChip} 
+          <TouchableOpacity
+            style={styles.filterChip}
             onPress={() => { setModalMode('month'); setModalVisible(true); setUseWeekFilter(false); }}
           >
             <Filter size={14} color="#2563eb" />
@@ -194,10 +202,10 @@ const AttendanceHistoryScreen = () => {
           <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Select {modalMode === 'year' ? 'Year' : 'Month'}</Text>
-              <ScrollView style={{maxHeight: 400}}>
+              <ScrollView style={{ maxHeight: 400 }}>
                 {(modalMode === 'year' ? yearOptions : monthOptions).map((item) => (
-                  <TouchableOpacity 
-                    key={item.toString()} 
+                  <TouchableOpacity
+                    key={item.toString()}
                     style={[styles.modalOption, (modalMode === 'year' ? selectedYear === item : selectedMonth === item) && styles.modalOptionSelected]}
                     onPress={() => {
                       if (modalMode === 'year') {
@@ -222,7 +230,7 @@ const AttendanceHistoryScreen = () => {
 
   const PaginationControls = () => (
     <View style={styles.paginationContainer}>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.paginationButton, currentPage === 1 && styles.paginationButtonDisabled]}
         onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
         disabled={currentPage === 1}
@@ -230,7 +238,7 @@ const AttendanceHistoryScreen = () => {
         <ChevronLeft size={20} color={currentPage === 1 ? '#cbd5e1' : '#2563eb'} />
       </TouchableOpacity>
       <Text style={styles.paginationText}>Page {currentPage} of {totalPages || 1}</Text>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.paginationButton, currentPage >= totalPages && styles.paginationButtonDisabled]}
         onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
         disabled={currentPage >= totalPages || totalPages === 0}
@@ -256,8 +264,8 @@ const AttendanceHistoryScreen = () => {
             </View>
           </View>
           <View style={styles.timeRow}>
-            <Text style={styles.timeLabel}>In: <Text style={styles.timeValue}>{item.punchInTime ? new Date(item.punchInTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}</Text></Text>
-            <Text style={styles.timeLabel}>Out: <Text style={styles.timeValue}>{item.punchOutTime ? new Date(item.punchOutTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--'}</Text></Text>
+            <Text style={styles.timeLabel}>In: <Text style={styles.timeValue}>{item.punchInTime ? new Date(item.punchInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</Text></Text>
+            <Text style={styles.timeLabel}>Out: <Text style={styles.timeValue}>{item.punchOutTime ? new Date(item.punchOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}</Text></Text>
           </View>
         </View>
       </View>
@@ -284,6 +292,28 @@ const AttendanceHistoryScreen = () => {
           </View>
         }
       />
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+          <MessageSquare size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Chat</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
+          <Fingerprint size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Mark Attendance</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
+          <CalendarDays size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Leaves</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
+          <HistoryIcon size={22} color="#059669" />
+          <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>History</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
+          <PartyPopper size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Holidays</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -296,16 +326,16 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '800', color: '#1e293b' },
   subtitle: { fontSize: 14, color: '#64748b' },
   statsScroll: { paddingHorizontal: 20, gap: 10 },
-  statCard: { 
-    backgroundColor: '#fff', 
-    minWidth: 120, 
-    padding: 15, 
-    borderRadius: 16, 
-    alignItems: 'center', 
-    elevation: 1 
+  statCard: {
+    backgroundColor: '#fff',
+    minWidth: 120,
+    padding: 15,
+    borderRadius: 16,
+    alignItems: 'center',
+    elevation: 1
   },
   iconCircle: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  statVal: { fontSize: 16, fontWeight: '800', color: '#1e293b' }, 
+  statVal: { fontSize: 16, fontWeight: '800', color: '#1e293b' },
   statLabel: { fontSize: 10, color: '#94a3b8', textTransform: 'uppercase' },
   filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginTop: 20 },
   filterChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', gap: 4 },
@@ -340,7 +370,30 @@ const styles = StyleSheet.create({
   paginationText: { fontSize: 14, color: '#64748b', fontWeight: '600' },
   emptyContainer: { alignItems: 'center', marginTop: 50 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#1e293b', marginTop: 10 },
-  emptyText: { color: '#64748b', marginTop: 4 }
+  emptyText: { color: '#64748b', marginTop: 4 },
+  footer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  footerButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  footerLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 4,
+  }
 });
 
 export default AttendanceHistoryScreen;

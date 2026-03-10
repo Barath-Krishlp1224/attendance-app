@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
-import { ChevronLeft, Copy, Paperclip, Plus, Search, X } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { CalendarDays, ChevronLeft, Copy, Fingerprint, History as HistoryIcon, MessageSquare, Paperclip, PartyPopper, Plus, Search, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import { FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, TouchableOpacity, View } from "react-native";
 import { io, Socket } from "socket.io-client";
@@ -113,6 +114,7 @@ const formatTime = (value?: string) => {
 const normalizeId = (value?: string) => String(value || "").trim().toLowerCase();
 
 export default function ChatContent() {
+    const router = useRouter();
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedKey, setSelectedKey] = useState("");
@@ -905,12 +907,60 @@ export default function ChatContent() {
                         </View>
                     </View>
                 </Modal>
+                {!selectedKey && (
+                    <View style={styles.footer}>
+                        <TouchableOpacity style={styles.footerButton}>
+                            <MessageSquare size={22} color="#059669" />
+                            <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Chat</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
+                            <Fingerprint size={22} color="#64748b" />
+                            <Text style={styles.footerLabel}>Mark Attendance</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
+                            <CalendarDays size={22} color="#64748b" />
+                            <Text style={styles.footerLabel}>Leaves</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
+                            <HistoryIcon size={22} color="#64748b" />
+                            <Text style={styles.footerLabel}>History</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
+                            <PartyPopper size={22} color="#64748b" />
+                            <Text style={styles.footerLabel}>Holidays</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
+    footer: {
+        flexDirection: 'row',
+        backgroundColor: '#fff',
+        borderTopWidth: 1,
+        borderTopColor: '#e2e8f0',
+        paddingVertical: 12,
+        elevation: 8,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+    },
+    footerButton: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 8
+    },
+    footerLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        color: '#64748b',
+        textAlign: 'center'
+    },
     container: {
         flex: 1,
         backgroundColor: "#ffffff",

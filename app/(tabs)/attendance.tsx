@@ -9,6 +9,7 @@ import {
   CheckCircle,
   ChevronLeft,
   Clock,
+  Fingerprint,
   History,
   LogIn,
   LogOut,
@@ -17,8 +18,7 @@ import {
   Navigation,
   PartyPopper,
   Power,
-  User,
-  Users,
+  User
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -238,6 +238,7 @@ const AttendanceScreen: React.FC = () => {
           <View style={styles.headerContent}>
             <View style={styles.headerLeft}>
               <Image source={require('../../assets/logo-hd.png')} style={styles.logo} resizeMode="contain" />
+              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1e293b', marginLeft: 8 }}>Unity App</Text>
             </View>
             <TouchableOpacity onPress={() => setIsLogoutConfirming(true)} style={styles.logoutBtn}>
               <Power size={20} color="#dc2626" />
@@ -272,7 +273,6 @@ const AttendanceScreen: React.FC = () => {
             <View style={styles.userInfo}>
               <Text style={styles.greeting}>Good {new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}</Text>
               <Text style={styles.userName}>{name || 'User'}</Text>
-              <Text style={styles.userBadge}>ID: {employeeId}</Text>
             </View>
             <View style={styles.locationBadge}>
               <Navigation size={14} color="#16a34a" />
@@ -431,28 +431,25 @@ const AttendanceScreen: React.FC = () => {
       {/* Footer Navigation */}
       {currentStep === 1 && (
         <View style={styles.footer}>
+          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+            <MessageSquare size={22} color="#64748b" />
+            <Text style={styles.footerLabel}>Chat</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
+            <Fingerprint size={22} color="#059669" />
+            <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Mark Attendance</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
             <CalendarDays size={22} color="#64748b" />
             <Text style={styles.footerLabel}>Leaves</Text>
-            <Text style={styles.footerLabel}>& Permissions</Text>
-
           </TouchableOpacity>
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
             <History size={22} color="#64748b" />
             <Text style={styles.footerLabel}>History</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/employees')}>
-            <Users size={22} color="#64748b" />
-
-            <Text style={styles.footerLabel}>Employees</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
             <PartyPopper size={22} color="#64748b" />
-            <Text style={styles.footerLabel}>Hoidays</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
-            <MessageSquare size={22} color="#64748b" />
-            <Text style={styles.footerLabel}>Chat</Text>
+            <Text style={styles.footerLabel}>Holidays</Text>
           </TouchableOpacity>
         </View>
       )}

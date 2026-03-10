@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
-import { Stack, useSegments, useRouter } from "expo-router";
-import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { ActivityIndicator, View, StyleSheet } from "react-native";
+import { Stack, useRouter, useSegments } from "expo-router";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import Toast from "react-native-toast-message";
 
 const checkLoggedIn = async (): Promise<boolean> => {
   try {
@@ -34,7 +34,7 @@ function AuthGuard() {
     if (!isLoaded) return;
 
     if (isLoggedIn && !inTabsGroup) {
-      router.replace("/(tabs)/attendance");
+      router.replace("/(tabs)/chat");
     } else if (!isLoggedIn && inTabsGroup) {
       router.replace("/");
     }
@@ -61,10 +61,10 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-    loadingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: '#ffffff',
-    },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+  },
 });

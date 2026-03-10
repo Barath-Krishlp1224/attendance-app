@@ -1,57 +1,47 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  StyleSheet,
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  SafeAreaView,
-  Dimensions,
-  ActivityIndicator,
-  RefreshControl,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
-  FlatList
-} from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import DateTimePickerModal from "react-native-modal-datetime-picker";
+import { useRouter } from "expo-router";
 import {
-  History as HistoryIcon,
-  CalendarDays,
-  Plus,
-  X,
-  Activity,
-  Target,
-  UserCheck,
-  TrendingUp,
-  Filter,
-  ChevronRight,
-  Home,
-  Briefcase,
-  Clock,
-  AlertCircle,
-  Shield,
-  Edit2,
-  Clock4,
-  CheckSquare,
-  Thermometer,
-  Plane,
-  Calendar,
-  Zap,
-  ShieldCheck,
-  HomeIcon,
   BriefcaseBusiness,
-  Clock3,
-  CheckCircle,
-  Power,
-  User,
-  Navigation,
+  Calendar,
+  CalendarDays,
   ChevronDown,
-  Search
+  ChevronRight,
+  Clock,
+  Clock3,
+  Fingerprint,
+  History as HistoryIcon,
+  HomeIcon,
+  MessageSquare,
+  PartyPopper,
+  Plane,
+  Plus,
+  Search,
+  ShieldCheck,
+  Target,
+  Thermometer,
+  TrendingUp,
+  UserCheck,
+  X,
+  Zap
 } from "lucide-react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from "react-native";
+import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
@@ -131,10 +121,10 @@ interface PermissionStatBoxProps {
 const formatTime = (timeStr?: string) => {
   if (!timeStr) return "--:--";
   const date = new Date(timeStr);
-  return date.toLocaleTimeString([], { 
-    hour: '2-digit', 
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
     minute: '2-digit',
-    hour12: true 
+    hour12: true
   });
 };
 
@@ -155,11 +145,11 @@ const StatBox: React.FC<StatBoxProps> = ({ icon, label, value, sub, progress, co
       </Text>
       <View style={styles.progressContainer}>
         <View style={styles.progressBar}>
-          <View 
+          <View
             style={[
-              styles.progressFill, 
+              styles.progressFill,
               { backgroundColor: color, width: `${Math.min(progress, 100)}%` }
-            ]} 
+            ]}
           />
         </View>
         <Text style={styles.progressText}>{progress.toFixed(1)}%</Text>
@@ -168,19 +158,19 @@ const StatBox: React.FC<StatBoxProps> = ({ icon, label, value, sub, progress, co
   </View>
 );
 
-const PermissionStatBox: React.FC<PermissionStatBoxProps> = ({ 
-  type, 
-  label, 
-  used = 0, 
-  remaining = 0, 
-  limit = 0, 
-  unit = "hours", 
-  pending = 0, 
-  color, 
-  icon 
+const PermissionStatBox: React.FC<PermissionStatBoxProps> = ({
+  type,
+  label,
+  used = 0,
+  remaining = 0,
+  limit = 0,
+  unit = "hours",
+  pending = 0,
+  color,
+  icon
 }) => {
   const progress = limit > 0 ? (used / limit) * 100 : 0;
-  
+
   return (
     <View style={[styles.statBox, styles.shadowSm]}>
       <View style={styles.statHeader}>
@@ -201,11 +191,11 @@ const PermissionStatBox: React.FC<PermissionStatBoxProps> = ({
         {limit > 0 && (
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
-              <View 
+              <View
                 style={[
-                  styles.progressFill, 
+                  styles.progressFill,
                   { backgroundColor: color, width: `${Math.min(progress, 100)}%` }
-                ]} 
+                ]}
               />
             </View>
             <Text style={styles.progressText}>{progress.toFixed(1)}% used</Text>
@@ -240,6 +230,7 @@ const StatBoxSkeleton = () => (
 );
 
 const LeaveDashboard = () => {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState({
     summary: true,
     history: true,
@@ -251,7 +242,7 @@ const LeaveDashboard = () => {
   const [isLeaveHistoryModalOpen, setIsLeaveHistoryModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLeaveDetails, setSelectedLeaveDetails] = useState<RequestItem | null>(null);
-  
+
   const [isStartDatePickerVisible, setStartDatePickerVisibility] = useState(false);
   const [isEndDatePickerVisible, setEndDatePickerVisibility] = useState(false);
   const [isPermissionDatePickerVisible, setPermissionDatePickerVisibility] = useState(false);
@@ -263,10 +254,10 @@ const LeaveDashboard = () => {
   const [empIdOrEmail, setEmpIdOrEmail] = useState("");
   const [employeeName, setEmployeeName] = useState("");
 
-  const [summary, setSummary] = useState<SummaryType>({ 
-    sick: TOTAL_LIMIT, 
-    casual: TOTAL_LIMIT, 
-    plannedRequests: 0, 
+  const [summary, setSummary] = useState<SummaryType>({
+    sick: TOTAL_LIMIT,
+    casual: TOTAL_LIMIT,
+    plannedRequests: 0,
     unplannedRequests: 0,
     permissionSummary: {
       permission: { usedHours: 0, remainingHours: 8, limit: 8, pendingRequests: 0 },
@@ -363,9 +354,9 @@ const LeaveDashboard = () => {
       if (req.permissionType) {
         const duration = parseFloat(req.duration as string) || 0;
         const days = req.days || 0;
-        
+
         if (req.status === 'approved' || req.status === 'auto-approved') {
-          switch(req.permissionType) {
+          switch (req.permissionType) {
             case 'permission':
               permissionUsed += duration;
               break;
@@ -377,9 +368,9 @@ const LeaveDashboard = () => {
               break;
           }
         }
-        
+
         if (req.status === 'pending' || req.status === 'manager-pending') {
-          switch(req.permissionType) {
+          switch (req.permissionType) {
             case 'permission':
               permissionPending++;
               break;
@@ -403,23 +394,23 @@ const LeaveDashboard = () => {
       plannedRequests: plannedCount,
       unplannedRequests: unplannedCount,
       permissionSummary: {
-        permission: { 
-          usedHours: permissionUsed, 
-          remainingHours: Math.max(0, 8 - permissionUsed), 
-          limit: 8, 
-          pendingRequests: permissionPending 
+        permission: {
+          usedHours: permissionUsed,
+          remainingHours: Math.max(0, 8 - permissionUsed),
+          limit: 8,
+          pendingRequests: permissionPending
         },
-        onDuty: { 
-          usedHours: onDutyUsed, 
-          remainingHours: Math.max(0, 8 - onDutyUsed), 
-          limit: 8, 
-          pendingRequests: onDutyPending 
+        onDuty: {
+          usedHours: onDutyUsed,
+          remainingHours: Math.max(0, 8 - onDutyUsed),
+          limit: 8,
+          pendingRequests: onDutyPending
         },
-        wfh: { 
-          usedDays: wfhUsed, 
-          remainingDays: Math.max(0, 4 - wfhUsed), 
-          limit: 4, 
-          pendingRequests: wfhPending 
+        wfh: {
+          usedDays: wfhUsed,
+          remainingDays: Math.max(0, 4 - wfhUsed),
+          limit: 4,
+          pendingRequests: wfhPending
         },
         forgotCheck: { pendingRequests: forgotCheckPending }
       }
@@ -436,7 +427,7 @@ const LeaveDashboard = () => {
       });
       return;
     }
-    
+
     setIsLoading({
       summary: true,
       history: true,
@@ -447,7 +438,7 @@ const LeaveDashboard = () => {
       // Fetch leaves data
       const leavesResponse = await fetch(`${API_BASE_URL}/api/leaves?empIdOrEmail=${encodeURIComponent(id)}&mode=list`);
       let leavesData: RequestItem[] = [];
-      
+
       if (leavesResponse.ok) {
         const data = await leavesResponse.json();
         leavesData = Array.isArray(data) ? data : [];
@@ -458,7 +449,7 @@ const LeaveDashboard = () => {
       // Fetch permissions data
       const permissionsResponse = await fetch(`${API_BASE_URL}/api/permissions?empIdOrEmail=${encodeURIComponent(id)}&mode=list`);
       let permissionsData: RequestItem[] = [];
-      
+
       if (permissionsResponse.ok) {
         const data = await permissionsResponse.json();
         permissionsData = Array.isArray(data) ? data : [];
@@ -470,8 +461,8 @@ const LeaveDashboard = () => {
       const allRequests = [
         ...leavesData.map(item => ({ ...item, requestType: 'leave' })),
         ...permissionsData.map(item => ({ ...item, requestType: 'permission' }))
-      ].filter(req => 
-        req.empIdOrEmail === id || 
+      ].filter(req =>
+        req.empIdOrEmail === id ||
         req.employeeId === id ||
         (req as any).empId === id
       );
@@ -481,7 +472,7 @@ const LeaveDashboard = () => {
       // Calculate summary from all requests
       calculateSummaryFromRequests(allRequests);
       setUserRequests(allRequests);
-      
+
       // Fetch attendance data
       const attendanceResponse = await fetch(`${API_BASE_URL}/api/attendance?empId=${encodeURIComponent(id)}`);
       let attendanceData: AttendanceRecord[] = [];
@@ -491,7 +482,7 @@ const LeaveDashboard = () => {
         attendanceData = data.attendances || data || [];
       }
 
-      setAttendanceList(attendanceData.filter((att: any) => 
+      setAttendanceList(attendanceData.filter((att: any) =>
         (att as any).empId === id || (att as any).employeeId === id
       ));
 
@@ -500,7 +491,7 @@ const LeaveDashboard = () => {
         history: false,
         attendance: false
       });
-    } catch (error) { 
+    } catch (error) {
       console.error("Error fetching data:", error);
       setIsLoading({
         summary: false,
@@ -541,15 +532,15 @@ const LeaveDashboard = () => {
   const calculateTimeDuration = (startTime: string, endTime: string) => {
     const [startHour, startMinute] = startTime.split(':').map(Number);
     const [endHour, endMinute] = endTime.split(':').map(Number);
-    
+
     const startTotalMinutes = startHour * 60 + startMinute;
     const endTotalMinutes = endHour * 60 + endMinute;
-    
+
     let durationMinutes = endTotalMinutes - startTotalMinutes;
     if (durationMinutes < 0) {
       durationMinutes += 24 * 60;
     }
-    
+
     return (durationMinutes / 60).toFixed(1);
   };
 
@@ -580,9 +571,9 @@ const LeaveDashboard = () => {
         Alert.alert("Error", "Please select a start date");
         return;
       }
-      
+
       const days = editableDays && parseFloat(editableDays) > 0 ? parseFloat(editableDays) : calculateDays(startDate, endDate || startDate);
-      
+
       const leaveData = {
         empIdOrEmail: employeeId,
         leaveType,
@@ -634,7 +625,7 @@ const LeaveDashboard = () => {
           Alert.alert("Error", "Please select date for permission");
           return;
         }
-        
+
         permissionData = {
           ...permissionData,
           date: permissionDate,
@@ -649,7 +640,7 @@ const LeaveDashboard = () => {
           Alert.alert("Error", "Please select date range for WFH");
           return;
         }
-        
+
         permissionData = {
           ...permissionData,
           startDate,
@@ -663,7 +654,7 @@ const LeaveDashboard = () => {
           Alert.alert("Error", "Please select date for On Duty");
           return;
         }
-        
+
         permissionData = {
           ...permissionData,
           date: permissionDate,
@@ -677,7 +668,7 @@ const LeaveDashboard = () => {
           Alert.alert("Error", "Please select date and time for forgot check");
           return;
         }
-        
+
         permissionData = {
           ...permissionData,
           date: forgotDate,
@@ -700,7 +691,7 @@ const LeaveDashboard = () => {
 
         if (response.ok) {
           Alert.alert(
-            "Success", 
+            "Success",
             `${permissionType.charAt(0).toUpperCase() + permissionType.slice(1)} request submitted successfully!`
           );
           setIsModalOpen(false);
@@ -745,11 +736,11 @@ const LeaveDashboard = () => {
       const status = req.status.toLowerCase();
       const descriptionText = (req.description || '').toLowerCase();
       const reason = (req.reason || '').toLowerCase();
-      
-      return type.includes(searchLower) || 
-             status.includes(searchLower) ||
-             descriptionText.includes(searchLower) ||
-             reason.includes(searchLower);
+
+      return type.includes(searchLower) ||
+        status.includes(searchLower) ||
+        descriptionText.includes(searchLower) ||
+        reason.includes(searchLower);
     });
   }, [userRequests, searchQuery]);
 
@@ -766,13 +757,13 @@ const LeaveDashboard = () => {
         casualUsagePercentage: 0
       };
     }
-    
+
     const sickTaken = TOTAL_LIMIT - summary.sick;
     const casualTaken = TOTAL_LIMIT - summary.casual;
     const totalTaken = sickTaken + casualTaken;
-    
+
     const presentCount = attendanceList.filter(a => a.present).length;
-    
+
     const attendanceProgress = (presentCount / TOTAL_WORK_DAYS) * 100;
     const leaveImpact = (totalTaken / TOTAL_WORK_DAYS) * 100;
     const sickUsagePercentage = (sickTaken / TOTAL_LIMIT) * 100;
@@ -840,10 +831,10 @@ const LeaveDashboard = () => {
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-GB', { 
-      day: '2-digit', 
-      month: 'short', 
-      year: 'numeric' 
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
     });
   };
 
@@ -855,20 +846,20 @@ const LeaveDashboard = () => {
   const renderRequestItem = ({ item, index }: { item: RequestItem; index: number }) => {
     const statusStyle = getStatusBadgeStyle(item.status);
     const type = item.leaveType || item.permissionType || 'default';
-    
+
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         key={index}
         style={styles.requestCard}
         onPress={() => handleViewLeaveDetails(item)}
       >
         <View style={styles.requestHeader}>
-          <View style={[styles.requestTypeIcon, 
-            item.leaveType === 'sick' ? { backgroundColor: '#fee2e2' } :
+          <View style={[styles.requestTypeIcon,
+          item.leaveType === 'sick' ? { backgroundColor: '#fee2e2' } :
             item.leaveType === 'casual' ? { backgroundColor: '#d1fae5' } :
-            item.permissionType === 'wfh' ? { backgroundColor: '#ede9fe' } :
-            item.permissionType === 'on-duty' ? { backgroundColor: '#d1fae5' } :
-            { backgroundColor: '#f3f4f6' }
+              item.permissionType === 'wfh' ? { backgroundColor: '#ede9fe' } :
+                item.permissionType === 'on-duty' ? { backgroundColor: '#d1fae5' } :
+                  { backgroundColor: '#f3f4f6' }
           ]}>
             {getTypeIcon(type)}
           </View>
@@ -886,7 +877,7 @@ const LeaveDashboard = () => {
             </Text>
           </View>
         </View>
-        
+
         <View style={styles.requestDetails}>
           <View style={styles.requestDateContainer}>
             <Calendar size={14} color="#64748b" />
@@ -901,23 +892,23 @@ const LeaveDashboard = () => {
               ) : 'N/A'}
             </Text>
           </View>
-          
+
           <View style={styles.requestDurationContainer}>
             <Clock size={14} color="#2563eb" />
             <Text style={styles.requestDuration}>
-              {item.days ? `${item.days} Days` : 
-               item.duration ? `${item.duration} Hours` : 
-               item.forgotType === 'in' ? 'Check-in' : 'Check-out'}
+              {item.days ? `${item.days} Days` :
+                item.duration ? `${item.duration} Hours` :
+                  item.forgotType === 'in' ? 'Check-in' : 'Check-out'}
             </Text>
           </View>
         </View>
-        
+
         {item.description && (
           <Text style={styles.requestDescription} numberOfLines={2}>
             {item.description}
           </Text>
         )}
-        
+
         <View style={styles.requestFooter}>
           <Text style={styles.viewDetailsText}>
             View Details
@@ -943,26 +934,27 @@ const LeaveDashboard = () => {
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <View>
-            <Text style={styles.headerTitle}>Leave & Permission Dashboard</Text>
-            <Text style={styles.headerSubtitle}>Welcome back, {employeeName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.headerTitle}>Unity App</Text>
+            </View>
+            <Text style={styles.headerSubtitle}>Leave & Permission Dashboard</Text>
           </View>
           <View style={styles.headerRight}>
             <View style={styles.userInfo}>
-              <Text style={styles.userName}>{employeeName}</Text>
-              <Text style={styles.userEmpId}>ID: {empIdOrEmail}</Text>
+              <Text style={styles.userName}>{employeeName || "User"}</Text>
             </View>
             <TouchableOpacity style={styles.avatar}>
-              <User size={20} color="#2563eb" />
+              <UserCheck size={20} color="#2563eb" />
             </TouchableOpacity>
           </View>
         </View>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={() => {
               setRefreshing(true);
               refreshData().finally(() => setRefreshing(false));
@@ -982,22 +974,22 @@ const LeaveDashboard = () => {
             ) : (
               <>
                 <View style={styles.statBoxWrapper}>
-                  <StatBox 
+                  <StatBox
                     icon={<UserCheck size={20} color="#2563eb" />}
-                    label="Presence" 
-                    value={annualStats.presentCount} 
-                    sub={`/ ${TOTAL_WORK_DAYS} Days`} 
-                    progress={annualStats.attendanceProgress} 
+                    label="Presence"
+                    value={annualStats.presentCount}
+                    sub={`/ ${TOTAL_WORK_DAYS} Days`}
+                    progress={annualStats.attendanceProgress}
                     color="#2563eb"
                     progressBg="#dbeafe"
                   />
                 </View>
                 <View style={styles.statBoxWrapper}>
-                  <StatBox 
+                  <StatBox
                     icon={<Thermometer size={20} color="#dc2626" />}
-                    label="Sick Leave" 
-                    value={summary.sick} 
-                    sub={`Taken: ${annualStats.sickTaken}`} 
+                    label="Sick Leave"
+                    value={summary.sick}
+                    sub={`Taken: ${annualStats.sickTaken}`}
                     progress={annualStats.sickUsagePercentage}
                     color="#dc2626"
                     progressBg="#fee2e2"
@@ -1006,11 +998,11 @@ const LeaveDashboard = () => {
                   />
                 </View>
                 <View style={styles.statBoxWrapper}>
-                  <StatBox 
+                  <StatBox
                     icon={<Plane size={20} color="#059669" />}
-                    label="Casual Leave" 
-                    value={summary.casual} 
-                    sub={`Taken: ${annualStats.casualTaken}`} 
+                    label="Casual Leave"
+                    value={summary.casual}
+                    sub={`Taken: ${annualStats.casualTaken}`}
                     progress={annualStats.casualUsagePercentage}
                     color="#059669"
                     progressBg="#d1fae5"
@@ -1019,23 +1011,23 @@ const LeaveDashboard = () => {
                   />
                 </View>
                 <View style={styles.statBoxWrapper}>
-                  <StatBox 
+                  <StatBox
                     icon={<TrendingUp size={20} color="#f59e0b" />}
-                    label="Total Taken" 
-                    value={annualStats.totalTaken} 
-                    sub="Leaves (All)" 
-                    progress={annualStats.leaveImpact} 
+                    label="Total Taken"
+                    value={annualStats.totalTaken}
+                    sub="Leaves (All)"
+                    progress={annualStats.leaveImpact}
                     color="#f59e0b"
                     progressBg="#fef3c7"
                   />
                 </View>
                 <View style={styles.statBoxWrapper}>
-                  <StatBox 
+                  <StatBox
                     icon={<Target size={20} color="#8b5cf6" />}
-                    label="Impact" 
-                    value={annualStats.totalTaken} 
-                    sub={`/ ${TOTAL_WORK_DAYS} Days`} 
-                    progress={annualStats.leaveImpact} 
+                    label="Impact"
+                    value={annualStats.totalTaken}
+                    sub={`/ ${TOTAL_WORK_DAYS} Days`}
+                    progress={annualStats.leaveImpact}
                     color="#8b5cf6"
                     progressBg="#ede9fe"
                   />
@@ -1043,14 +1035,14 @@ const LeaveDashboard = () => {
               </>
             )}
           </View>
-          
+
           {/* Permission Stats */}
           <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Permission Summary</Text>
           <View style={styles.statsGrid}>
             {!isLoading.summary && (
               <>
                 <View style={styles.statBoxWrapper}>
-                  <PermissionStatBox 
+                  <PermissionStatBox
                     type="permission"
                     label="Permission"
                     used={summary.permissionSummary.permission.usedHours}
@@ -1063,7 +1055,7 @@ const LeaveDashboard = () => {
                   />
                 </View>
                 <View style={styles.statBoxWrapper}>
-                  <PermissionStatBox 
+                  <PermissionStatBox
                     type="on-duty"
                     label="On Duty"
                     used={summary.permissionSummary.onDuty.usedHours}
@@ -1076,7 +1068,7 @@ const LeaveDashboard = () => {
                   />
                 </View>
                 <View style={styles.statBoxWrapper}>
-                  <PermissionStatBox 
+                  <PermissionStatBox
                     type="wfh"
                     label="WFH"
                     used={summary.permissionSummary.wfh.usedDays}
@@ -1089,7 +1081,7 @@ const LeaveDashboard = () => {
                   />
                 </View>
                 <View style={styles.statBoxWrapper}>
-                  <PermissionStatBox 
+                  <PermissionStatBox
                     type="forgot-check"
                     label="Forgot Check"
                     pending={summary.permissionSummary.forgotCheck.pendingRequests}
@@ -1114,11 +1106,11 @@ const LeaveDashboard = () => {
                 <Text style={styles.historySubtitle}>Track all your requests</Text>
               </View>
             </View>
-            
+
             <View style={styles.searchContainer}>
               <Search size={14} color="#64748b" />
-              <TextInput 
-                placeholder="Search..." 
+              <TextInput
+                placeholder="Search..."
                 style={styles.searchInput}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -1155,7 +1147,7 @@ const LeaveDashboard = () => {
       </ScrollView>
 
       {/* Apply Button */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.fab}
         onPress={() => setIsModalOpen(true)}
       >
@@ -1170,14 +1162,14 @@ const LeaveDashboard = () => {
         transparent={true}
         onRequestClose={() => setIsModalOpen(false)}
       >
-        <KeyboardAvoidingView 
+        <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalContainer}
         >
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Apply Leave/Permission</Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => {
                   setIsModalOpen(false);
                   resetForm();
@@ -1259,7 +1251,7 @@ const LeaveDashboard = () => {
                   <View style={styles.dateRow}>
                     <View style={styles.dateInputContainer}>
                       <Text style={styles.formLabel}>From Date</Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.dateInput}
                         onPress={() => setStartDatePickerVisibility(true)}
                       >
@@ -1270,7 +1262,7 @@ const LeaveDashboard = () => {
                     </View>
                     <View style={styles.dateInputContainer}>
                       <Text style={styles.formLabel}>To Date</Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.dateInput}
                         onPress={() => setEndDatePickerVisibility(true)}
                       >
@@ -1344,7 +1336,7 @@ const LeaveDashboard = () => {
                   {permissionType === "permission" && (
                     <>
                       <Text style={styles.formLabel}>Date</Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.dateInput}
                         onPress={() => setPermissionDatePickerVisibility(true)}
                       >
@@ -1356,7 +1348,7 @@ const LeaveDashboard = () => {
                       <View style={styles.dateRow}>
                         <View style={styles.timeInputContainer}>
                           <Text style={styles.formLabel}>From Time</Text>
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.timeInput}
                             onPress={() => setStartTimePickerVisibility(true)}
                           >
@@ -1367,7 +1359,7 @@ const LeaveDashboard = () => {
                         </View>
                         <View style={styles.timeInputContainer}>
                           <Text style={styles.formLabel}>To Time</Text>
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.timeInput}
                             onPress={() => setEndTimePickerVisibility(true)}
                           >
@@ -1394,8 +1386,8 @@ const LeaveDashboard = () => {
                               durationOption === option && styles.durationOptionTextActive
                             ]}>
                               {option === "first-half" ? "First Half" :
-                               option === "second-half" ? "Second Half" :
-                               option === "minutes" ? "Minutes" : "Hours"}
+                                option === "second-half" ? "Second Half" :
+                                  option === "minutes" ? "Minutes" : "Hours"}
                             </Text>
                           </TouchableOpacity>
                         ))}
@@ -1456,7 +1448,7 @@ const LeaveDashboard = () => {
                       <View style={styles.dateRow}>
                         <View style={styles.dateInputContainer}>
                           <Text style={styles.formLabel}>From Date</Text>
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.dateInput}
                             onPress={() => setStartDatePickerVisibility(true)}
                           >
@@ -1467,7 +1459,7 @@ const LeaveDashboard = () => {
                         </View>
                         <View style={styles.dateInputContainer}>
                           <Text style={styles.formLabel}>To Date</Text>
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.dateInput}
                             onPress={() => setEndDatePickerVisibility(true)}
                           >
@@ -1496,7 +1488,7 @@ const LeaveDashboard = () => {
                   {permissionType === "on-duty" && (
                     <>
                       <Text style={styles.formLabel}>Date</Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.dateInput}
                         onPress={() => setPermissionDatePickerVisibility(true)}
                       >
@@ -1506,7 +1498,7 @@ const LeaveDashboard = () => {
                       </TouchableOpacity>
 
                       <Text style={styles.formLabel}>Time</Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         style={styles.timeInput}
                         onPress={() => setStartTimePickerVisibility(true)}
                       >
@@ -1531,7 +1523,7 @@ const LeaveDashboard = () => {
                               durationOption === option && styles.durationOptionTextActive
                             ]}>
                               {option === "first-half" ? "First Half" :
-                               option === "second-half" ? "Second Half" : "Hours"}
+                                option === "second-half" ? "Second Half" : "Hours"}
                             </Text>
                           </TouchableOpacity>
                         ))}
@@ -1575,7 +1567,7 @@ const LeaveDashboard = () => {
                       <View style={styles.dateRow}>
                         <View style={styles.dateInputContainer}>
                           <Text style={styles.formLabel}>Date</Text>
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.dateInput}
                             onPress={() => setForgotDatePickerVisibility(true)}
                           >
@@ -1586,7 +1578,7 @@ const LeaveDashboard = () => {
                         </View>
                         <View style={styles.dateInputContainer}>
                           <Text style={styles.formLabel}>Time</Text>
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.timeInput}
                             onPress={() => setForgotTimePickerVisibility(true)}
                           >
@@ -1629,7 +1621,7 @@ const LeaveDashboard = () => {
                 </View>
               )}
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.submitButton}
                 onPress={handleSubmitRequest}
                 disabled={isSubmitting}
@@ -1744,12 +1736,12 @@ const LeaveDashboard = () => {
                   <View style={styles.detailCard}>
                     <Text style={styles.detailLabel}>Request Type</Text>
                     <Text style={styles.detailValue}>
-                      {selectedLeaveDetails.leaveType ? 
-                        `Leave - ${selectedLeaveDetails.leaveType}` : 
+                      {selectedLeaveDetails.leaveType ?
+                        `Leave - ${selectedLeaveDetails.leaveType}` :
                         `Permission - ${selectedLeaveDetails.permissionType}`}
                     </Text>
                   </View>
-                  
+
                   <View style={styles.detailCard}>
                     <Text style={styles.detailLabel}>Status</Text>
                     <Text style={[
@@ -1767,7 +1759,7 @@ const LeaveDashboard = () => {
                     {selectedLeaveDetails.startDate ? (
                       <>
                         {formatDate(selectedLeaveDetails.startDate)}
-                        {selectedLeaveDetails.endDate && selectedLeaveDetails.endDate !== selectedLeaveDetails.startDate && 
+                        {selectedLeaveDetails.endDate && selectedLeaveDetails.endDate !== selectedLeaveDetails.startDate &&
                           ` - ${formatDate(selectedLeaveDetails.endDate)}`}
                       </>
                     ) : selectedLeaveDetails.date ? (
@@ -1785,8 +1777,8 @@ const LeaveDashboard = () => {
                   <Text style={styles.detailLabel}>Duration</Text>
                   <Text style={[styles.detailValue, styles.durationValue]}>
                     {selectedLeaveDetails.days ? `${selectedLeaveDetails.days} Day${selectedLeaveDetails.days > 1 ? 's' : ''}` :
-                     selectedLeaveDetails.duration ? `${selectedLeaveDetails.duration} Hour${parseFloat(selectedLeaveDetails.duration as string) > 1 ? 's' : ''}` :
-                     selectedLeaveDetails.forgotType === 'in' ? 'Missed Check-in' : 'Missed Check-out'}
+                      selectedLeaveDetails.duration ? `${selectedLeaveDetails.duration} Hour${parseFloat(selectedLeaveDetails.duration as string) > 1 ? 's' : ''}` :
+                        selectedLeaveDetails.forgotType === 'in' ? 'Missed Check-in' : 'Missed Check-out'}
                   </Text>
                 </View>
 
@@ -1811,7 +1803,7 @@ const LeaveDashboard = () => {
                   </View>
                 )}
 
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.closeDetailsButton}
                   onPress={() => setIsLeaveHistoryModalOpen(false)}
                 >
@@ -1822,6 +1814,30 @@ const LeaveDashboard = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Footer Navigation */}
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+          <MessageSquare size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Chat</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
+          <Fingerprint size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Mark Attendance</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
+          <CalendarDays size={22} color="#059669" />
+          <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Leaves</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
+          <HistoryIcon size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>History</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
+          <PartyPopper size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Holidays</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 };
@@ -2568,6 +2584,29 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600'
+  },
+  footer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  footerButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  footerLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 4,
   }
 });
 

@@ -1,23 +1,26 @@
-import React, { useState, useMemo } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-  Dimensions,
-  Platform,
-} from "react-native";
 import { useRouter } from "expo-router";
 import {
-  Calendar,
-  ChevronLeft,
-  Clock,
-  CheckCircle2,
-  CalendarDays,
   ArrowRight,
+  Calendar,
+  CalendarDays,
+  CheckCircle2,
+  Clock,
+  Fingerprint,
+  History,
+  MessageSquare,
+  PartyPopper
 } from "lucide-react-native";
+import React, { useMemo, useState } from "react";
+import {
+  Dimensions,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -61,7 +64,7 @@ const HolidaysPage = () => {
 
   const categorizedHolidays = useMemo(() => {
     const todayDate = new Date(currentYear, currentMonth, currentDay);
-    
+
     const finished = updatedHolidays.filter(h => h.actualDate < todayDate);
     const upcoming = updatedHolidays.filter(h => h.actualDate >= todayDate);
     const thirtyDaysAgo = new Date(todayDate);
@@ -72,37 +75,37 @@ const HolidaysPage = () => {
   }, [updatedHolidays, currentYear, currentMonth, currentDay]);
 
   const tabs = [
-    { 
-      id: "upcoming" as const, 
-      label: "Upcoming", 
-      icon: CalendarDays, 
-      count: categorizedHolidays.upcoming.length, 
-      color: "#2563eb", 
-      bg: "#dbeafe" 
+    {
+      id: "upcoming" as const,
+      label: "Upcoming",
+      icon: CalendarDays,
+      count: categorizedHolidays.upcoming.length,
+      color: "#2563eb",
+      bg: "#dbeafe"
     },
-    { 
-      id: "recent" as const, 
-      label: "Recent", 
-      icon: Clock, 
-      count: categorizedHolidays.recent.length, 
-      color: "#d97706", 
-      bg: "#fef3c7" 
+    {
+      id: "recent" as const,
+      label: "Recent",
+      icon: Clock,
+      count: categorizedHolidays.recent.length,
+      color: "#d97706",
+      bg: "#fef3c7"
     },
-    { 
-      id: "finished" as const, 
-      label: "Finished", 
-      icon: CheckCircle2, 
-      count: categorizedHolidays.finished.length, 
-      color: "#059669", 
-      bg: "#d1fae5" 
+    {
+      id: "finished" as const,
+      label: "Finished",
+      icon: CheckCircle2,
+      count: categorizedHolidays.finished.length,
+      color: "#059669",
+      bg: "#d1fae5"
     },
   ];
 
   const currentDisplayList = activeTab === "upcoming"
     ? categorizedHolidays.upcoming
     : activeTab === "recent"
-    ? categorizedHolidays.recent
-    : categorizedHolidays.finished;
+      ? categorizedHolidays.recent
+      : categorizedHolidays.finished;
 
   const formatMonth = (dateStr: string) => {
     const month = dateStr.split(' ')[0];
@@ -123,10 +126,10 @@ const HolidaysPage = () => {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <ChevronLeft size={24} color="#4b5563" />
-        </TouchableOpacity>
-        <Text style={styles.title}>{currentYear} Holidays</Text>
+        <View>
+          <Text style={styles.title}>Unity App</Text>
+          <Text style={[styles.title, { fontSize: 16, marginTop: 4, color: '#64748b' }]}>{currentYear} Holidays</Text>
+        </View>
         <View style={styles.dateBadge}>
           <Text style={styles.dateText}>{getCurrentDate()}</Text>
         </View>
@@ -150,9 +153,9 @@ const HolidaysPage = () => {
 
       {/* Tabs - Centered with proper spacing */}
       <View style={styles.tabsWrapper}>
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false} 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabsContent}
         >
           {tabs.map((tab) => {
@@ -183,7 +186,7 @@ const HolidaysPage = () => {
 
       {/* Holidays List */}
       <View style={styles.listContainer}>
-        <ScrollView 
+        <ScrollView
           showsVerticalScrollIndicator={true}
           contentContainerStyle={styles.listContent}
         >
@@ -193,11 +196,11 @@ const HolidaysPage = () => {
               const daysDiff = Math.floor(
                 (holiday.actualDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
               );
-              const dayText = daysDiff > 0 
-                ? `In ${daysDiff} day${daysDiff !== 1 ? 's' : ''}` 
-                : daysDiff < 0 
-                ? `${Math.abs(daysDiff)} day${Math.abs(daysDiff) !== 1 ? 's' : ''} ago` 
-                : 'Today';
+              const dayText = daysDiff > 0
+                ? `In ${daysDiff} day${daysDiff !== 1 ? 's' : ''}`
+                : daysDiff < 0
+                  ? `${Math.abs(daysDiff)} day${Math.abs(daysDiff) !== 1 ? 's' : ''} ago`
+                  : 'Today';
 
               return (
                 <TouchableOpacity
@@ -218,8 +221,8 @@ const HolidaysPage = () => {
                       <Text style={[
                         styles.dayInfo,
                         daysDiff > 0 ? styles.dayInfoUpcoming :
-                        daysDiff < 0 ? styles.dayInfoPast :
-                        styles.dayInfoToday
+                          daysDiff < 0 ? styles.dayInfoPast :
+                            styles.dayInfoToday
                       ]}>
                         {dayText}
                       </Text>
@@ -234,13 +237,35 @@ const HolidaysPage = () => {
               <Calendar size={48} color="#e5e7eb" />
               <Text style={styles.emptyText}>No holidays to show here</Text>
               <Text style={styles.emptySubText}>
-                {activeTab === "upcoming" 
+                {activeTab === "upcoming"
                   ? "All holidays for this year have passed"
                   : "No holidays in this category"}
               </Text>
             </View>
           )}
         </ScrollView>
+      </View>
+      <View style={styles.footer}>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+          <MessageSquare size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Chat</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
+          <Fingerprint size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Mark Attendance</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
+          <CalendarDays size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Leaves</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
+          <History size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>History</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
+          <PartyPopper size={22} color="#059669" />
+          <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Holidays</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
@@ -487,6 +512,29 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 20,
   },
+  footer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  footerButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  footerLabel: {
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 4,
+  }
 });
 
 export default HolidaysPage;

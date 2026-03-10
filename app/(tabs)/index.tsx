@@ -1,18 +1,18 @@
+import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
-  View,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Image,
+  View,
 } from "react-native";
-import { useRouter } from "expo-router";
 import Toast from "react-native-toast-message";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons } from "@expo/vector-icons";
 
 import logoImage from "../../assets/logo-hd.png";
 
@@ -95,7 +95,7 @@ export default function LoginScreen() {
       });
 
       setTimeout(() => {
-        router.replace("/(tabs)/attendance");
+        router.replace("/(tabs)/chat");
       }, 800);
     } catch (_err) {
       void _err;
@@ -120,12 +120,12 @@ export default function LoginScreen() {
 
       <View style={styles.logoContainer}>
         <Image source={logoImage} style={styles.logo} />
-        <Text style={styles.brandTagline}>Attendance Management System</Text>
+        <Text style={styles.brandTagline}>Unity Attendance Management System</Text>
       </View>
 
       <View style={styles.loginCard}>
         <View style={styles.cardHeader}>
-          
+
           <Text style={styles.welcomeText}>Welcome Back</Text>
           <Text style={styles.signInText}>Please sign in to continue</Text>
         </View>
@@ -240,6 +240,7 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontWeight: "500",
     letterSpacing: 0.5,
+    opacity: 0, // Hide tagline if it refers to old brand
   },
   loginCard: {
     width: "90%",
