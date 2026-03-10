@@ -1,41 +1,40 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Modal,
-  Image,
-  ScrollView,
-  SafeAreaView,
-  Platform,
-  Dimensions,
-} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import Toast from 'react-native-toast-message';
 import {
-  MapPin,
+  Building2,
+  CalendarDays,
+  Camera,
+  CheckCircle,
+  ChevronLeft,
+  Clock,
+  History,
   LogIn,
   LogOut,
-  Clock,
-  
-  CheckCircle,
-  
-  Users,
-  Power,
-  CalendarDays,
-  History,
-  Building2,
-  Camera,
-  PartyPopper,
-  ChevronLeft,
-  User,
+  MapPin,
+  MessageSquare,
   Navigation,
+  PartyPopper,
+  Power,
+  User,
+  Users,
 } from 'lucide-react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Image,
+  Modal,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import Toast from 'react-native-toast-message';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -58,7 +57,7 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
 
 const getTimeStatus = (type: PunchType) => {
   if (type === 'OUT') return { label: 'Punch Out', color: '#64748b' };
-  
+
   const now = new Date();
   const hours = now.getHours();
   const minutes = now.getMinutes();
@@ -298,9 +297,9 @@ const AttendanceScreen: React.FC = () => {
                   </Text>
                 </View>
               </View>
-              
+
               <View style={[styles.timelineConnector, record?.punchInTime && styles.timelineConnectorActive]} />
-              
+
               <View style={styles.timelineItem}>
                 <View style={[styles.timelineDot, record?.punchOutTime && styles.timelineDotActive]}>
                   <LogOut size={16} color={record?.punchOutTime ? '#fff' : '#94a3b8'} />
@@ -375,7 +374,7 @@ const AttendanceScreen: React.FC = () => {
           </View>
 
           <Text style={styles.stepInstruction}>Choose your action</Text>
-          
+
           <TouchableOpacity
             style={styles.punchButton}
             onPress={() => handlePunchTypeSelect(record?.punchInTime ? 'OUT' : 'IN')}
@@ -395,10 +394,10 @@ const AttendanceScreen: React.FC = () => {
       {currentStep === 3 && (
         <View style={styles.cameraContainer}>
           <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front" />
-          
+
           <SafeAreaView style={styles.cameraOverlay}>
-            <TouchableOpacity 
-              onPress={() => setCurrentStep(2)} 
+            <TouchableOpacity
+              onPress={() => setCurrentStep(2)}
               style={styles.cameraBack}
             >
               <ChevronLeft size={24} color="#fff" />
@@ -435,21 +434,25 @@ const AttendanceScreen: React.FC = () => {
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
             <CalendarDays size={22} color="#64748b" />
             <Text style={styles.footerLabel}>Leaves</Text>
-<Text style={styles.footerLabel}>& Permissions</Text>
+            <Text style={styles.footerLabel}>& Permissions</Text>
 
           </TouchableOpacity>
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
             <History size={22} color="#64748b" />
             <Text style={styles.footerLabel}>History</Text>
           </TouchableOpacity>
-            <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/employees')}>
-             <Users size={22} color="#64748b" />
+          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/employees')}>
+            <Users size={22} color="#64748b" />
 
             <Text style={styles.footerLabel}>Employees</Text>
           </TouchableOpacity>
-            <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
+          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
             <PartyPopper size={22} color="#64748b" />
             <Text style={styles.footerLabel}>Hoidays</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+            <MessageSquare size={22} color="#64748b" />
+            <Text style={styles.footerLabel}>Chat</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -459,11 +462,11 @@ const AttendanceScreen: React.FC = () => {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalHeader}>Confirm Attendance</Text>
-            
+
             {previewImage && (
-              <Image 
-                source={{ uri: previewImage }} 
-                style={[styles.previewPhoto, { transform: [{ scaleX: -1 }] }]} 
+              <Image
+                source={{ uri: previewImage }}
+                style={[styles.previewPhoto, { transform: [{ scaleX: -1 }] }]}
               />
             )}
 
@@ -471,7 +474,7 @@ const AttendanceScreen: React.FC = () => {
               <View style={styles.confirmRow}>
                 <Clock size={16} color="#64748b" />
                 <Text style={styles.confirmText}>
-                  {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
               {timeStatus && (
@@ -481,9 +484,9 @@ const AttendanceScreen: React.FC = () => {
               )}
             </View>
 
-            <TouchableOpacity 
-              style={styles.submitButton} 
-              onPress={handleConfirmSubmit} 
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={handleConfirmSubmit}
               disabled={submitLoading}
             >
               {submitLoading ? (
@@ -492,9 +495,9 @@ const AttendanceScreen: React.FC = () => {
                 <Text style={styles.submitButtonText}>Submit Attendance</Text>
               )}
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.retakeButton} 
+
+            <TouchableOpacity
+              style={styles.retakeButton}
               onPress={() => setIsConfirming(false)}
             >
               <Text style={styles.retakeButtonText}>Retake Photo</Text>
@@ -509,8 +512,8 @@ const AttendanceScreen: React.FC = () => {
           <View style={styles.modalCard}>
             <Text style={styles.modalHeader}>Confirm Logout</Text>
             <Text style={styles.modalSubtext}>Are you sure you want to sign out?</Text>
-            <TouchableOpacity 
-              style={[styles.submitButton, { backgroundColor: '#dc2626' }]} 
+            <TouchableOpacity
+              style={[styles.submitButton, { backgroundColor: '#dc2626' }]}
               onPress={async () => {
                 await AsyncStorage.multiRemove(["userRole", "userEmpId", "userName", "userTeam"]);
                 router.replace('/');
@@ -518,8 +521,8 @@ const AttendanceScreen: React.FC = () => {
             >
               <Text style={styles.submitButtonText}>Logout</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.retakeButton} 
+            <TouchableOpacity
+              style={styles.retakeButton}
               onPress={() => setIsLogoutConfirming(false)}
             >
               <Text style={styles.retakeButtonText}>Cancel</Text>
@@ -544,15 +547,15 @@ const AttendanceScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#f8fafc' 
+  container: {
+    flex: 1,
+    backgroundColor: '#f8fafc'
   },
-  
+
   // Header Styles
-  header: { 
-    backgroundColor: '#fff', 
-    paddingHorizontal: 20, 
+  header: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
     paddingTop: Platform.OS === 'android' ? 40 : 10,
     paddingBottom: 20,
     borderBottomWidth: 1,
@@ -563,68 +566,68 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
   },
-  headerContent: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
   },
-  headerLeft: { 
-    flex: 1 
+  headerLeft: {
+    flex: 1
   },
-  logo: { 
-    width: 120, 
-    height: 36 
+  logo: {
+    width: 120,
+    height: 36
   },
-  logoutBtn: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 20, 
-    backgroundColor: '#fee2e2', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  logoutBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  
+
   // Progress Bar
-  progressContainer: { 
-    gap: 12 
+  progressContainer: {
+    gap: 12
   },
-  progressBar: { 
-    height: 4, 
-    backgroundColor: '#e2e8f0', 
-    borderRadius: 2, 
-    overflow: 'hidden' 
+  progressBar: {
+    height: 4,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 2,
+    overflow: 'hidden'
   },
-  progressFill: { 
-    height: '100%', 
+  progressFill: {
+    height: '100%',
     backgroundColor: '#2563eb',
     borderRadius: 2,
   },
-  stepLabels: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between' 
+  stepLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between'
   },
-  stepLabel: { 
-    fontSize: 12, 
-    fontWeight: '600', 
-    color: '#94a3b8' 
+  stepLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#94a3b8'
   },
-  stepLabelActive: { 
-    color: '#2563eb' 
+  stepLabelActive: {
+    color: '#2563eb'
   },
 
   // Content
-  content: { 
-    flex: 1, 
-    paddingHorizontal: 20 
+  content: {
+    flex: 1,
+    paddingHorizontal: 20
   },
-  
+
   // User Card
-  userCard: { 
-    backgroundColor: '#fff', 
-    borderRadius: 20, 
-    padding: 20, 
-    marginTop: 20, 
+  userCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 20,
     marginBottom: 20,
     elevation: 2,
     shadowColor: '#000',
@@ -632,69 +635,69 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 12,
   },
-  userAvatarContainer: { 
-    position: 'relative', 
-    marginBottom: 12 
+  userAvatarContainer: {
+    position: 'relative',
+    marginBottom: 12
   },
-  userAvatar: { 
-    width: 64, 
-    height: 64, 
-    borderRadius: 32, 
-    backgroundColor: '#eff6ff', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  userAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  onlineIndicator: { 
-    position: 'absolute', 
-    right: 2, 
-    bottom: 2, 
-    width: 16, 
-    height: 16, 
-    borderRadius: 8, 
-    backgroundColor: '#16a34a', 
-    borderWidth: 3, 
-    borderColor: '#fff' 
+  onlineIndicator: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#16a34a',
+    borderWidth: 3,
+    borderColor: '#fff'
   },
-  userInfo: { 
-    marginBottom: 16 
+  userInfo: {
+    marginBottom: 16
   },
-  greeting: { 
-    fontSize: 13, 
-    color: '#64748b', 
-    marginBottom: 4 
+  greeting: {
+    fontSize: 13,
+    color: '#64748b',
+    marginBottom: 4
   },
-  userName: { 
-    fontSize: 24, 
-    fontWeight: '800', 
-    color: '#0f172a', 
-    marginBottom: 6 
+  userName: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 6
   },
-  userBadge: { 
-    fontSize: 12, 
-    color: '#94a3b8', 
-    fontWeight: '600' 
+  userBadge: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '600'
   },
-  locationBadge: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 6, 
-    backgroundColor: '#f0fdf4', 
-    paddingHorizontal: 12, 
-    paddingVertical: 8, 
-    borderRadius: 20, 
-    alignSelf: 'flex-start' 
+  locationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: 'flex-start'
   },
-  locationText: { 
-    fontSize: 11, 
-    color: '#16a34a', 
-    fontWeight: '600' 
+  locationText: {
+    fontSize: 11,
+    color: '#16a34a',
+    fontWeight: '600'
   },
 
   // Status Timeline
-  statusContainer: { 
-    backgroundColor: '#fff', 
-    borderRadius: 20, 
-    padding: 20, 
+  statusContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 20,
     marginBottom: 24,
     elevation: 1,
     shadowColor: '#000',
@@ -702,73 +705,73 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
   },
-  timelineContainer: { 
-    marginTop: 16 
+  timelineContainer: {
+    marginTop: 16
   },
-  timelineItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 16 
+  timelineItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16
   },
-  timelineDot: { 
-    width: 44, 
-    height: 44, 
-    borderRadius: 22, 
-    backgroundColor: '#f1f5f9', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  timelineDot: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  timelineDotActive: { 
-    backgroundColor: '#2563eb' 
+  timelineDotActive: {
+    backgroundColor: '#2563eb'
   },
-  timelineContent: { 
-    flex: 1 
+  timelineContent: {
+    flex: 1
   },
-  timelineLabel: { 
-    fontSize: 13, 
-    color: '#64748b', 
-    fontWeight: '600', 
-    marginBottom: 4 
+  timelineLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '600',
+    marginBottom: 4
   },
-  timelineTime: { 
-    fontSize: 18, 
-    fontWeight: '700', 
-    color: '#94a3b8' 
+  timelineTime: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#94a3b8'
   },
-  timelineTimeActive: { 
-    color: '#0f172a' 
+  timelineTimeActive: {
+    color: '#0f172a'
   },
-  timelineConnector: { 
-    width: 2, 
-    height: 20, 
-    backgroundColor: '#e2e8f0', 
-    marginLeft: 21, 
-    marginVertical: 4 
+  timelineConnector: {
+    width: 2,
+    height: 20,
+    backgroundColor: '#e2e8f0',
+    marginLeft: 21,
+    marginVertical: 4
   },
-  timelineConnectorActive: { 
-    backgroundColor: '#2563eb' 
+  timelineConnectorActive: {
+    backgroundColor: '#2563eb'
   },
 
   // Section
-  section: { 
-    marginBottom: 24 
+  section: {
+    marginBottom: 24
   },
-  sectionTitle: { 
-    fontSize: 16, 
-    fontWeight: '700', 
-    color: '#0f172a', 
-    marginBottom: 16 
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 16
   },
 
   // Branch Items
-  branchItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#fff', 
-    borderRadius: 16, 
-    padding: 16, 
-    marginBottom: 12, 
-    borderWidth: 2, 
+  branchItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
     borderColor: '#e2e8f0',
     elevation: 1,
     shadowColor: '#000',
@@ -776,60 +779,60 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 4,
   },
-  branchItemDisabled: { 
-    opacity: 0.5 
+  branchItemDisabled: {
+    opacity: 0.5
   },
-  branchIcon: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: 12, 
-    backgroundColor: '#f8fafc', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginRight: 12 
+  branchIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12
   },
-  branchIconActive: { 
-    backgroundColor: '#eff6ff' 
+  branchIconActive: {
+    backgroundColor: '#eff6ff'
   },
-  branchDetails: { 
-    flex: 1 
+  branchDetails: {
+    flex: 1
   },
-  branchName: { 
-    fontSize: 15, 
-    fontWeight: '700', 
-    color: '#0f172a', 
-    marginBottom: 6 
+  branchName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 6
   },
-  branchNameDisabled: { 
-    color: '#94a3b8' 
+  branchNameDisabled: {
+    color: '#94a3b8'
   },
-  branchMeta: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 6 
+  branchMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
   },
-  branchDistance: { 
-    fontSize: 12, 
-    color: '#64748b', 
-    fontWeight: '600' 
+  branchDistance: {
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600'
   },
-  branchInRange: { 
-    fontSize: 12, 
-    color: '#16a34a', 
-    fontWeight: '700' 
+  branchInRange: {
+    fontSize: 12,
+    color: '#16a34a',
+    fontWeight: '700'
   },
-  branchCheck: { 
-    marginLeft: 8 
+  branchCheck: {
+    marginLeft: 8
   },
 
   // Punch Button
-  punchButton: { 
-    backgroundColor: '#2563eb', 
-    borderRadius: 20, 
-    padding: 20, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
+  punchButton: {
+    backgroundColor: '#2563eb',
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
     elevation: 4,
     shadowColor: '#2563eb',
@@ -837,201 +840,201 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
   },
-  punchButtonIcon: { 
-    width: 48, 
-    height: 48, 
-    borderRadius: 24, 
-    backgroundColor: 'rgba(255,255,255,0.2)', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  punchButtonIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  punchButtonText: { 
-    fontSize: 18, 
-    fontWeight: '800', 
-    color: '#fff' 
+  punchButtonText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#fff'
   },
 
   // Completed State
-  completedContainer: { 
-    backgroundColor: '#fff', 
-    borderRadius: 20, 
-    padding: 40, 
-    alignItems: 'center', 
+  completedContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
     marginTop: 20,
     borderWidth: 2,
     borderColor: '#bbf7d0',
   },
-  completedIcon: { 
-    marginBottom: 16 
+  completedIcon: {
+    marginBottom: 16
   },
-  completedTitle: { 
-    fontSize: 20, 
-    fontWeight: '800', 
-    color: '#16a34a', 
-    marginBottom: 8 
+  completedTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#16a34a',
+    marginBottom: 8
   },
-  completedSubtitle: { 
-    fontSize: 14, 
-    color: '#64748b' 
+  completedSubtitle: {
+    fontSize: 14,
+    color: '#64748b'
   },
 
   // Step 2 Screen
-  stepScreen: { 
-    flex: 1, 
-    padding: 20 
+  stepScreen: {
+    flex: 1,
+    padding: 20
   },
-  backLink: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 4, 
-    marginBottom: 24 
+  backLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 24
   },
-  backText: { 
-    fontSize: 15, 
-    fontWeight: '600', 
-    color: '#2563eb' 
+  backText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2563eb'
   },
-  selectionCard: { 
-    backgroundColor: '#fff', 
-    borderRadius: 20, 
-    padding: 24, 
-    alignItems: 'center', 
+  selectionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
     marginBottom: 32,
     borderWidth: 2,
     borderColor: '#bfdbfe',
   },
-  selectionLabel: { 
-    fontSize: 13, 
-    color: '#64748b', 
-    marginTop: 12, 
-    marginBottom: 4 
+  selectionLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    marginTop: 12,
+    marginBottom: 4
   },
-  selectionValue: { 
-    fontSize: 20, 
-    fontWeight: '800', 
-    color: '#1e40af' 
+  selectionValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1e40af'
   },
-  stepInstruction: { 
-    fontSize: 16, 
-    fontWeight: '700', 
-    color: '#0f172a', 
-    marginBottom: 20, 
-    textAlign: 'center' 
+  stepInstruction: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 20,
+    textAlign: 'center'
   },
 
   // Camera Styles
-  cameraContainer: { 
-    flex: 1, 
-    backgroundColor: '#000' 
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: '#000'
   },
-  cameraOverlay: { 
-    flex: 1, 
-    justifyContent: 'space-between' 
+  cameraOverlay: {
+    flex: 1,
+    justifyContent: 'space-between'
   },
-  cameraBack: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(0,0,0,0.5)', 
-    alignSelf: 'flex-start', 
-    paddingHorizontal: 16, 
-    paddingVertical: 10, 
-    borderRadius: 25, 
-    margin: 20, 
-    gap: 4 
+  cameraBack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 25,
+    margin: 20,
+    gap: 4
   },
-  cameraBackText: { 
-    color: '#fff', 
-    fontWeight: '600' 
+  cameraBackText: {
+    color: '#fff',
+    fontWeight: '600'
   },
-  cameraFrame: { 
-    position: 'absolute', 
-    top: SCREEN_HEIGHT * 0.25, 
-    alignSelf: 'center', 
-    width: SCREEN_WIDTH * 0.7, 
-    height: SCREEN_WIDTH * 0.9 
+  cameraFrame: {
+    position: 'absolute',
+    top: SCREEN_HEIGHT * 0.25,
+    alignSelf: 'center',
+    width: SCREEN_WIDTH * 0.7,
+    height: SCREEN_WIDTH * 0.9
   },
-  frameCorner: { 
-    position: 'absolute', 
-    width: 40, 
-    height: 40, 
-    borderColor: '#2563eb', 
-    borderWidth: 3 
+  frameCorner: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderColor: '#2563eb',
+    borderWidth: 3
   },
-  frameTopLeft: { 
-    top: 0, 
-    left: 0, 
-    borderRightWidth: 0, 
-    borderBottomWidth: 0, 
-    borderTopLeftRadius: 8 
+  frameTopLeft: {
+    top: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 8
   },
-  frameTopRight: { 
-    top: 0, 
-    right: 0, 
-    borderLeftWidth: 0, 
-    borderBottomWidth: 0, 
-    borderTopRightRadius: 8 
+  frameTopRight: {
+    top: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderBottomWidth: 0,
+    borderTopRightRadius: 8
   },
-  frameBottomLeft: { 
-    bottom: 0, 
-    left: 0, 
-    borderRightWidth: 0, 
-    borderTopWidth: 0, 
-    borderBottomLeftRadius: 8 
+  frameBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderRightWidth: 0,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 8
   },
-  frameBottomRight: { 
-    bottom: 0, 
-    right: 0, 
-    borderLeftWidth: 0, 
-    borderTopWidth: 0, 
-    borderBottomRightRadius: 8 
+  frameBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderLeftWidth: 0,
+    borderTopWidth: 0,
+    borderBottomRightRadius: 8
   },
-  cameraHint: { 
-    backgroundColor: 'rgba(0,0,0,0.6)', 
-    paddingHorizontal: 20, 
-    paddingVertical: 12, 
-    borderRadius: 25, 
-    alignSelf: 'center', 
-    marginBottom: 140 
+  cameraHint: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+    alignSelf: 'center',
+    marginBottom: 140
   },
-  cameraHintText: { 
-    color: '#fff', 
-    fontWeight: '600', 
-    fontSize: 14 
+  cameraHintText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14
   },
-  cameraControls: { 
-    alignItems: 'center', 
-    paddingBottom: 50 
+  cameraControls: {
+    alignItems: 'center',
+    paddingBottom: 50
   },
-  captureButton: { 
-    width: 80, 
-    height: 80, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  captureButton: {
+    width: 80,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  captureRing: { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 40, 
-    borderWidth: 4, 
-    borderColor: '#fff', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  captureRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 4,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
-  captureCenter: { 
-    width: 60, 
-    height: 60, 
-    borderRadius: 30, 
-    backgroundColor: '#fff', 
-    alignItems: 'center', 
-    justifyContent: 'center' 
+  captureCenter: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center'
   },
 
   // Footer Navigation
-  footer: { 
-    flexDirection: 'row', 
-    backgroundColor: '#fff', 
-    borderTopWidth: 1, 
-    borderTopColor: '#e2e8f0', 
+  footer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
     paddingVertical: 12,
     elevation: 8,
     shadowColor: '#000',
@@ -1039,84 +1042,84 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
   },
-  footerButton: { 
-    flex: 1, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    paddingVertical: 8 
+  footerButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8
   },
-  footerLabel: { 
-    fontSize: 11, 
-    fontWeight: '600', 
-    color: '#64748b', 
+  footerLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748b',
   },
 
   // Modal Styles
-  modalBackdrop: { 
-    flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.7)', 
-    justifyContent: 'flex-end' 
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end'
   },
-  modalCard: { 
-    backgroundColor: '#fff', 
-    borderTopLeftRadius: 32, 
-    borderTopRightRadius: 32, 
-    padding: 24, 
-    paddingBottom: 40 
+  modalCard: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40
   },
-  modalHeader: { 
-    fontSize: 22, 
-    fontWeight: '800', 
-    color: '#0f172a', 
-    textAlign: 'center', 
-    marginBottom: 20 
+  modalHeader: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0f172a',
+    textAlign: 'center',
+    marginBottom: 20
   },
-  modalSubtext: { 
-    fontSize: 14, 
-    color: '#64748b', 
-    textAlign: 'center', 
-    marginBottom: 24 
+  modalSubtext: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 24
   },
-  previewPhoto: { 
-    width: '100%', 
-    height: 380, 
-    borderRadius: 20, 
-    marginBottom: 20 
+  previewPhoto: {
+    width: '100%',
+    height: 380,
+    borderRadius: 20,
+    marginBottom: 20
   },
-  confirmInfo: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    backgroundColor: '#f8fafc', 
-    padding: 16, 
-    borderRadius: 12, 
-    marginBottom: 20 
+  confirmInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20
   },
-  confirmRow: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 8 
+  confirmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
   },
-  confirmText: { 
-    fontSize: 15, 
-    fontWeight: '700', 
-    color: '#334155' 
+  confirmText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#334155'
   },
-  timeBadge: { 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 20 
+  timeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20
   },
-  timeBadgeText: { 
-    color: '#fff', 
-    fontWeight: '700', 
-    fontSize: 12 
+  timeBadgeText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 12
   },
-  submitButton: { 
-    backgroundColor: '#16a34a', 
-    borderRadius: 16, 
-    padding: 18, 
-    alignItems: 'center', 
+  submitButton: {
+    backgroundColor: '#16a34a',
+    borderRadius: 16,
+    padding: 18,
+    alignItems: 'center',
     marginBottom: 12,
     elevation: 2,
     shadowColor: '#16a34a',
@@ -1124,37 +1127,37 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
   },
-  submitButtonText: { 
-    color: '#fff', 
-    fontSize: 16, 
-    fontWeight: '800' 
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800'
   },
-  retakeButton: { 
-    padding: 12, 
-    alignItems: 'center' 
+  retakeButton: {
+    padding: 12,
+    alignItems: 'center'
   },
-  retakeButtonText: { 
-    color: '#64748b', 
-    fontSize: 15, 
-    fontWeight: '600' 
+  retakeButtonText: {
+    color: '#64748b',
+    fontSize: 15,
+    fontWeight: '600'
   },
 
   // Success Screen
-  successScreen: { 
-    ...StyleSheet.absoluteFillObject, 
-    backgroundColor: 'rgba(255,255,255,0.98)', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    zIndex: 1000 
+  successScreen: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.98)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000
   },
-  successContent: { 
-    alignItems: 'center' 
+  successContent: {
+    alignItems: 'center'
   },
-  successText: { 
-    fontSize: 24, 
-    fontWeight: '800', 
-    color: '#16a34a', 
-    marginTop: 20 
+  successText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#16a34a',
+    marginTop: 20
   },
 });
 
