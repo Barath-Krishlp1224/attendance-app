@@ -44,7 +44,7 @@ import {
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
-const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
+const API_BASE_URL = 'https://unity-uat.lemonpay.in';
 const ANNUAL_TOTAL = 24;
 const TOTAL_WORK_DAYS = 320;
 const TOTAL_LIMIT = 12;
@@ -436,14 +436,22 @@ const LeaveDashboard = () => {
 
     try {
       // Fetch leaves data
+      console.log("Fetching leaves for:", id);
       const leavesResponse = await fetch(`${API_BASE_URL}/api/leaves?empIdOrEmail=${encodeURIComponent(id)}&mode=list`);
       let leavesData: RequestItem[] = [];
 
       if (leavesResponse.ok) {
-        const data = await leavesResponse.json();
-        leavesData = Array.isArray(data) ? data : [];
+        const contentType = leavesResponse.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await leavesResponse.json();
+          leavesData = Array.isArray(data) ? data : [];
+        } else {
+          const text = await leavesResponse.text();
+          console.error("Leaves API Error (Non-JSON):", text);
+        }
       } else {
-        console.log("Leaves API error:", leavesResponse.status);
+        const text = await leavesResponse.text();
+        console.log("Leaves API error:", leavesResponse.status, text);
       }
 
       // Fetch permissions data
@@ -451,10 +459,17 @@ const LeaveDashboard = () => {
       let permissionsData: RequestItem[] = [];
 
       if (permissionsResponse.ok) {
-        const data = await permissionsResponse.json();
-        permissionsData = Array.isArray(data) ? data : [];
+        const contentType = permissionsResponse.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await permissionsResponse.json();
+          permissionsData = Array.isArray(data) ? data : [];
+        } else {
+          const text = await permissionsResponse.text();
+          console.error("Permissions API Error (Non-JSON):", text);
+        }
       } else {
-        console.log("Permissions API error:", permissionsResponse.status);
+        const text = await permissionsResponse.text();
+        console.log("Permissions API error:", permissionsResponse.status, text);
       }
 
       // Combine both leave and permission requests
@@ -478,8 +493,14 @@ const LeaveDashboard = () => {
       let attendanceData: AttendanceRecord[] = [];
 
       if (attendanceResponse.ok) {
-        const data = await attendanceResponse.json();
-        attendanceData = data.attendances || data || [];
+        const contentType = attendanceResponse.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await attendanceResponse.json();
+          attendanceData = data.attendances || data || [];
+        } else {
+          const text = await attendanceResponse.text();
+          console.error("Attendance API Error (Non-JSON):", text);
+        }
       }
 
       setAttendanceList(attendanceData.filter((att: any) =>
@@ -601,8 +622,15 @@ const LeaveDashboard = () => {
           resetForm();
           refreshData();
         } else {
-          const error = await response.json();
-          Alert.alert("Error", error.error || "Failed to submit leave request");
+          let errorMessage = "Failed to submit leave request";
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const error = await response.json();
+            errorMessage = error.error || errorMessage;
+          } else {
+            errorMessage = await response.text();
+          }
+          Alert.alert("Error", errorMessage);
         }
       } catch (error) {
         console.error('Error submitting leave request:', error);
@@ -698,8 +726,15 @@ const LeaveDashboard = () => {
           resetForm();
           refreshData();
         } else {
-          const error = await response.json();
-          Alert.alert("Error", error.error || "Failed to submit permission request");
+          let errorMessage = `Failed to submit ${permissionType} request`;
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const error = await response.json();
+            errorMessage = error.error || errorMessage;
+          } else {
+            errorMessage = await response.text();
+          }
+          Alert.alert("Error", errorMessage);
         }
       } catch (error) {
         console.error('Error submitting permission request:', error);
@@ -935,7 +970,7 @@ const LeaveDashboard = () => {
         <View style={styles.headerTopRow}>
           <View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.headerTitle}>Unity App</Text>
+              
             </View>
             <Text style={styles.headerSubtitle}>Leave & Permission Dashboard</Text>
           </View>
@@ -1817,14 +1852,15 @@ const LeaveDashboard = () => {
 
       {/* Footer Navigation */}
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
-          <MessageSquare size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Chat</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
           <Fingerprint size={22} color="#64748b" />
           <Text style={styles.footerLabel}>Mark Attendance</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+          <MessageSquare size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Chat</Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
           <CalendarDays size={22} color="#059669" />
           <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Leaves</Text>

@@ -28,7 +28,7 @@ type Team =
   | "Admin & Operations"
   | "TL Accountant";
 
-const API_BASE_URL = "https://lemonpay-portal.vercel.app/";
+const API_BASE_URL = "https://unity-uat.lemonpay.in";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -95,7 +95,7 @@ export default function LoginScreen() {
       });
 
       setTimeout(() => {
-        router.replace("/(tabs)/chat");
+        router.replace("/(tabs)/attendance");
       }, 800);
     } catch (_err) {
       void _err;

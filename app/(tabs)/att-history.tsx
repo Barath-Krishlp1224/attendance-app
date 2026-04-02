@@ -32,7 +32,7 @@ import {
   View
 } from 'react-native';
 
-const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
+const API_BASE_URL = 'https://unity-uat.lemonpay.in';
 const TOTAL_WORK_DAYS = 320;
 const ITEMS_PER_PAGE = 5;
 
@@ -77,10 +77,23 @@ const AttendanceHistoryScreen = () => {
       const id = await AsyncStorage.getItem("userEmpId");
       if (!id) return;
       const response = await fetch(`${API_BASE_URL}/api/attendance?empId=${encodeURIComponent(id)}`);
-      const data = await response.json();
-      setAttendanceList(data.attendances || []);
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error("Attendance History fetch error (status):", response.status, text);
+        return;
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        setAttendanceList(data.attendances || []);
+      } else {
+        const text = await response.text();
+        console.error("Attendance History fetch error (Non-JSON):", text);
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Attendance History network/parse error:", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -146,7 +159,6 @@ const AttendanceHistoryScreen = () => {
     return (
       <View style={styles.headerContent}>
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>Unity App</Text>
           <Text style={styles.subtitle}>Attendance Logs</Text>
           <Text style={styles.subtitle}>
             {useWeekFilter ? `Current Week (${weekLabel})` : `Showing ${selectedMonth === "All" ? "Full Year" : selectedMonth} ${selectedYear}`}
@@ -293,14 +305,16 @@ const AttendanceHistoryScreen = () => {
         }
       />
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
-          <MessageSquare size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Chat</Text>
-        </TouchableOpacity>
+
         <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
           <Fingerprint size={22} color="#64748b" />
           <Text style={styles.footerLabel}>Mark Attendance</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+          <MessageSquare size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Chat</Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
           <CalendarDays size={22} color="#64748b" />
           <Text style={styles.footerLabel}>Leaves</Text>

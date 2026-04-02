@@ -909,14 +909,15 @@ export default function ChatContent() {
                 </Modal>
                 {!selectedKey && (
                     <View style={styles.footer}>
-                        <TouchableOpacity style={styles.footerButton}>
-                            <MessageSquare size={22} color="#059669" />
-                            <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Chat</Text>
-                        </TouchableOpacity>
                         <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
                             <Fingerprint size={22} color="#64748b" />
                             <Text style={styles.footerLabel}>Mark Attendance</Text>
                         </TouchableOpacity>
+                        <TouchableOpacity style={styles.footerButton}>
+                            <MessageSquare size={22} color="#059669" />
+                            <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Chat</Text>
+                        </TouchableOpacity>
+                        
                         <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
                             <CalendarDays size={22} color="#64748b" />
                             <Text style={styles.footerLabel}>Leaves</Text>

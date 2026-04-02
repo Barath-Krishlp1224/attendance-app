@@ -43,7 +43,7 @@ const BRANCHES = [
   { id: 1, name: "Lp Saaram Office", lat: 11.939198361614558, lon: 79.81654494108358, radius: 500 },
   { id: 2, name: "Lp Tidel Office", lat: 11.995967441546023, lon: 79.76744798792814, radius: 1000 },
 ];
-const API_BASE_URL = 'https://lemonpay-portal.vercel.app/';
+const API_BASE_URL = 'https://unity-uat.lemonpay.in';
 
 function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3;
@@ -114,10 +114,23 @@ const AttendanceScreen: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ employeeId: empId }),
       });
-      const json = await res.json();
-      setRecord(json.record || null);
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("Failed to load attendance (status):", res.status, text);
+        return;
+      }
+
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const json = await res.json();
+        setRecord(json.record || null);
+      } else {
+        const text = await res.text();
+        console.error("Failed to load attendance (Non-JSON response):", text);
+      }
     } catch (e) {
-      console.error("Failed to load attendance:", e);
+      console.error("Failed to load attendance (network/parse error):", e);
     }
   }, []);
 
@@ -201,7 +214,18 @@ const AttendanceScreen: React.FC = () => {
           branchName: selectedBranch?.name,
         }),
       });
-      const json = await res.json();
+
+      let json;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        json = await res.json();
+      } else {
+        const text = await res.text();
+        console.error("Attendance submission error (Non-JSON):", text);
+        Toast.show({ type: 'error', text1: 'Submission Failed', text2: 'Invalid response from server' });
+        return;
+      }
+
       if (!res.ok) {
         Toast.show({ type: 'error', text1: json.error || 'Failed' });
       } else {
@@ -238,7 +262,6 @@ const AttendanceScreen: React.FC = () => {
           <View style={styles.headerContent}>
             <View style={styles.headerLeft}>
               <Image source={require('../../assets/logo-hd.png')} style={styles.logo} resizeMode="contain" />
-              <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1e293b', marginLeft: 8 }}>Unity App</Text>
             </View>
             <TouchableOpacity onPress={() => setIsLogoutConfirming(true)} style={styles.logoutBtn}>
               <Power size={20} color="#dc2626" />
@@ -431,14 +454,15 @@ const AttendanceScreen: React.FC = () => {
       {/* Footer Navigation */}
       {currentStep === 1 && (
         <View style={styles.footer}>
-          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
-            <MessageSquare size={22} color="#64748b" />
-            <Text style={styles.footerLabel}>Chat</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
             <Fingerprint size={22} color="#059669" />
             <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Mark Attendance</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+            <MessageSquare size={22} color="#64748b" />
+            <Text style={styles.footerLabel}>Chat</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
             <CalendarDays size={22} color="#64748b" />
             <Text style={styles.footerLabel}>Leaves</Text>

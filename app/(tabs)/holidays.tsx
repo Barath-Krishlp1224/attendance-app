@@ -127,7 +127,6 @@ const HolidaysPage = () => {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Unity App</Text>
           <Text style={[styles.title, { fontSize: 16, marginTop: 4, color: '#64748b' }]}>{currentYear} Holidays</Text>
         </View>
         <View style={styles.dateBadge}>
@@ -246,14 +245,16 @@ const HolidaysPage = () => {
         </ScrollView>
       </View>
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
-          <MessageSquare size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Chat</Text>
-        </TouchableOpacity>
+
         <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
           <Fingerprint size={22} color="#64748b" />
           <Text style={styles.footerLabel}>Mark Attendance</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
+          <MessageSquare size={22} color="#64748b" />
+          <Text style={styles.footerLabel}>Chat</Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
           <CalendarDays size={22} color="#64748b" />
           <Text style={styles.footerLabel}>Leaves</Text>

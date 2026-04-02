@@ -34,7 +34,7 @@ function AuthGuard() {
     if (!isLoaded) return;
 
     if (isLoggedIn && !inTabsGroup) {
-      router.replace("/(tabs)/chat");
+      router.replace("/(tabs)/attendance");
     } else if (!isLoggedIn && inTabsGroup) {
       router.replace("/");
     }
