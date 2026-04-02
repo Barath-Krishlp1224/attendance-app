@@ -1,0 +1,146 @@
+export const modalStyles = (screenHeight: number) => ({
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 24,
+    width: "100%",
+    maxHeight: screenHeight * 0.85,
+    overflow: "hidden",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+  modalBody: {
+    padding: 20,
+  },
+  employeeInfo: {
+    backgroundColor: "#dbeafe",
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+  employeeName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1e40af",
+  },
+  employeeId: {
+    fontSize: 12,
+    color: "#3b82f6",
+    marginTop: 2,
+  },
+  submitButton: {
+    backgroundColor: "#2563eb",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    marginTop: 20,
+  },
+  submitButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  submitButtonDisabled: {
+    backgroundColor: "#9ca3af",
+  },
+  submitButtonSubText: {
+    color: "#e5e7eb",
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  detailsModalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  detailsModalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    width: "100%",
+    maxHeight: screenHeight * 0.8,
+  },
+  detailsModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0",
+  },
+  detailsModalTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+  detailsModalBody: {
+    padding: 20,
+  },
+  detailsGrid: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 16,
+  },
+  detailCard: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: "#64748b",
+    marginBottom: 4,
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#0f172a",
+  },
+  durationValue: {
+    color: "#2563eb",
+  },
+  detailSubText: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 4,
+  },
+  detailText: {
+    fontSize: 14,
+    color: "#475569",
+    lineHeight: 20,
+  },
+  closeDetailsButton: {
+    backgroundColor: "#2563eb",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    marginTop: 20,
+  },
+  closeDetailsButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+});
