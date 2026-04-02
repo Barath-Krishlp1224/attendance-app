@@ -11,7 +11,7 @@ const LeaveHeader: React.FC<LeaveHeaderProps> = ({ employeeName }) => (
   <View style={styles.header}>
     <View style={styles.headerTopRow}>
       <View>
-        <Image source={require("../../../../assets/logo-hd.png")} style={styles.logo} resizeMode="contain" />
+        <Image source={require("../../../assets/logo-hd.png")} style={styles.logo} resizeMode="contain" />
         <Text style={styles.headerSubtitle}>Leave & Permission Dashboard</Text>
       </View>
       <View style={styles.headerRight}>

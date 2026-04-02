@@ -2,22 +2,22 @@ import React from "react";
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Plus } from "lucide-react-native";
 
-import ApplyModal from "./leave/components/ApplyModal";
-import FooterNav from "./leave/components/FooterNav";
-import HistorySection from "./leave/components/HistorySection";
-import LeaveDetailsModal from "./leave/components/LeaveDetailsModal";
-import LeaveHeader from "./leave/components/LeaveHeader";
-import StatsSection from "./leave/components/StatsSection";
-import { styles } from "./leave/styles";
-import { useLeaveDashboard } from "./leave/hooks/useLeaveDashboard";
+import ApplyModal from "../../components/leave_feature/components/ApplyModal";
+import FooterNav from "../../components/leave_feature/components/FooterNav";
+import HistorySection from "../../components/leave_feature/components/HistorySection";
+import LeaveDetailsModal from "../../components/leave_feature/components/LeaveDetailsModal";
+import LeaveHeader from "../../components/leave_feature/components/LeaveHeader";
+import StatsSection from "../../components/leave_feature/components/StatsSection";
+import { styles } from "../../components/leave_feature/styles";
+import { useLeaveDashboard } from "../../components/leave_feature/hooks/useLeaveDashboard";
 
 const LeaveDashboard = () => {
   const {

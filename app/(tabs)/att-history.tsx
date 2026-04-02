@@ -24,13 +24,13 @@ import {
   Modal,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const API_BASE_URL = 'https://unity-uat.lemonpay.in';
 const TOTAL_WORK_DAYS = 320;

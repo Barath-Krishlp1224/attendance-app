@@ -2,9 +2,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
 import { useRouter } from "expo-router";
-import { CalendarDays, ChevronLeft, Copy, Fingerprint, History as HistoryIcon, MessageSquare, Paperclip, PartyPopper, Plus, Search, X } from "lucide-react-native";
+import { CalendarDays, ChevronLeft, Copy, Fingerprint, Forward, History as HistoryIcon, MessageSquare, Paperclip, PartyPopper, Phone, Plus, Search, Trash2, Users, Video, X } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
-import { FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, TouchableOpacity, View } from "react-native";
+import { FlatList, Image, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, ToastAndroid, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { io, Socket } from "socket.io-client";
 
 interface Employee {
@@ -18,6 +19,8 @@ interface Employee {
     phoneNumber?: string;
     department?: string;
     role?: string;
+    isOnline?: boolean;
+    lastSeen?: string | Date | null;
 }
 
 interface Attachment {
@@ -38,6 +41,7 @@ interface Message {
     receiverId: string;
     content?: string;
     attachments?: Attachment[];
+    reactions?: { emoji: string; userIds: string[] }[];
     replyTo?: {
         messageId?: string;
         senderName?: string;
@@ -138,10 +142,74 @@ export default function ChatContent() {
     const [editingMessageId, setEditingMessageId] = useState("");
     const [editingText, setEditingText] = useState("");
     const [replyTo, setReplyTo] = useState<Message | null>(null);
+    const [showMentions, setShowMentions] = useState(false);
+    const [mentionSearch, setMentionSearch] = useState("");
+    const [mentionResults, setMentionResults] = useState<Employee[]>([]);
+    const [mentionLoading, setMentionLoading] = useState(false);
+    const [mentionError, setMentionError] = useState("");
+    const [mentionAnchor, setMentionAnchor] = useState<{ bottom: number; left: number; width: number } | null>(null);
+    const [clearedAtByConversation, setClearedAtByConversation] = useState<Record<string, number>>({});
+    const [reactionsByMessage, setReactionsByMessage] = useState<Record<string, string[]>>({});
     const [isForwardModalOpen, setIsForwardModalOpen] = useState(false);
     const [forwardSearch, setForwardSearch] = useState("");
     const [forwardMessage, setForwardMessage] = useState<Message | null>(null);
-    const [clearedAtByConversation, setClearedAtByConversation] = useState<Record<string, number>>({});
+    const [groupPhotoFile, setGroupPhotoFile] = useState<any>(null);
+    const [seenProfileEmployee, setSeenProfileEmployee] = useState<Employee | null>(null);
+    const [profileTab, setProfileTab] = useState<"media" | "links" | "docs">("media");
+    const onlineUserIdsRef = React.useRef<Set<string>>(new Set());
+    const messageInputRef = React.useRef<TextInput | null>(null);
+    const mentionTriggerRef = React.useRef<{ index: number; query: string } | null>(null);
+
+    useEffect(() => {
+        if (!showMentions) return;
+
+        if (!mentionSearch && employees.length > 0) {
+            setMentionResults(employees);
+            setMentionError("");
+            return;
+        }
+
+        let active = true;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(async () => {
+            setMentionLoading(true);
+            setMentionError("");
+            try {
+                const params = new URLSearchParams();
+                if (mentionSearch) params.set("search", mentionSearch);
+                params.set("limit", "20");
+
+                const response = await fetch(`${API_BASE_URL}/api/employees?${params.toString()}`, {
+                    cache: "no-store",
+                    signal: controller.signal,
+                    headers: { "Content-Type": "application/json" },
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || "Failed to fetch employees");
+                }
+
+                const data = await response.json();
+                const list = Array.isArray(data?.employees) ? data.employees : [];
+                if (active) setMentionResults(list);
+            } catch (error: any) {
+                if (controller.signal.aborted) return;
+                if (active) {
+                    setMentionError(error?.message || "Failed to load mentions");
+                    setMentionResults([]);
+                }
+            } finally {
+                if (active) setMentionLoading(false);
+            }
+        }, 200);
+
+        return () => {
+            active = false;
+            clearTimeout(timeoutId);
+            controller.abort();
+        };
+    }, [showMentions, mentionSearch, employees]);
 
     const employeeById = useMemo(() => {
         const map: Record<string, Employee> = {};
@@ -156,6 +224,18 @@ export default function ChatContent() {
         () => `chatClearedAt:${currentUser?.empId || "guest"}`,
         [currentUser?.empId]
     );
+
+    const applyOnlineStatus = React.useCallback((list: Employee[]) => {
+        const onlineSet = onlineUserIdsRef.current;
+        return list.map((emp) => {
+            const isOnline = onlineSet.has(normalizeId(emp.empId));
+            return {
+                ...emp,
+                isOnline,
+                lastSeen: isOnline ? null : emp.lastSeen ?? null,
+            };
+        });
+    }, []);
 
     const sortedConversationList = useMemo(() => {
         const query = searchTerm.trim().toLowerCase();
@@ -293,14 +373,14 @@ export default function ChatContent() {
                 const response = await fetch(`${API_BASE_URL}/api/employees?limit=500`, { cache: "no-store" });
                 const data = await response.json();
                 const list: Employee[] = Array.isArray(data?.employees) ? data.employees : [];
-                setEmployees(list.filter((employee) => String(employee.empId || "").trim() !== currentUser.empId));
+                setEmployees(applyOnlineStatus(list.filter((employee) => normalizeId(employee.empId) !== currentUser.empId)));
             } catch (error) {
                 console.error("Failed to fetch employees", error);
             }
         };
 
         loadEmployees();
-    }, [currentUser?.empId]);
+    }, [currentUser?.empId, applyOnlineStatus]);
 
     useEffect(() => {
         if (!currentUser?.empId) return;
@@ -356,6 +436,31 @@ export default function ChatContent() {
             .then(() => {
                 socket = io(API_BASE_URL, { path: "/api/socket" });
                 socket.emit("join-user", currentUser.empId);
+
+                socket.on("online-users", (onlineIds: string[]) => {
+                    const onlineSet = new Set((onlineIds || []).map((id) => normalizeId(id)));
+                    onlineUserIdsRef.current = onlineSet;
+                    setEmployees((prev) => applyOnlineStatus(prev));
+                });
+
+                socket.on("user-status", (payload: any) => {
+                    const userId = normalizeId(payload?.userId);
+                    if (!userId) return;
+                    if (payload?.isOnline) {
+                        onlineUserIdsRef.current = new Set([...onlineUserIdsRef.current, userId]);
+                    } else {
+                        const next = new Set(onlineUserIdsRef.current);
+                        next.delete(userId);
+                        onlineUserIdsRef.current = next;
+                    }
+                    setEmployees((prev) =>
+                        prev.map((emp) =>
+                            normalizeId(emp.empId) === userId
+                                ? { ...emp, isOnline: !!payload?.isOnline, lastSeen: payload?.lastSeen || emp.lastSeen }
+                                : emp
+                        )
+                    );
+                });
 
                 socket.on("receive-message", (incoming: Message) => {
                     if (!incoming) return;
@@ -436,6 +541,16 @@ export default function ChatContent() {
                     if (!messageId) return;
                     setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
                     setRefreshTick((prev) => prev + 1);
+                });
+
+                socket.on("message-reaction", (payload: any) => {
+                    const messageId = String(payload?.messageId || "").trim();
+                    const reactions = Array.isArray(payload?.reactions) ? payload.reactions : [];
+                    if (!messageId) return;
+                    setReactionsByMessage((prev) => {
+                        const emojis = reactions.map((r: any) => String(r?.emoji || "")).filter(Boolean);
+                        return { ...prev, [messageId]: emojis };
+                    });
                 });
             })
             .catch((error) => {
@@ -542,6 +657,207 @@ export default function ChatContent() {
         setSelectedGroupMemberProfile(null);
     };
 
+    const handleChatTextChange = (value: string) => {
+        setText(value);
+
+        // Assuming cursor is at the end for simple logic, 
+        // but robust would used onSelectionChange
+        const textBeforeCursor = value; 
+        const mentionMatch = /(^|\s)@([^\s@]*)$/.exec(textBeforeCursor);
+
+        if (mentionMatch) {
+            const lastAtIndex = textBeforeCursor.lastIndexOf("@");
+            const query = mentionMatch[2] || "";
+            setMentionSearch(query);
+            setShowMentions(true);
+            mentionTriggerRef.current = { index: lastAtIndex, query };
+        } else {
+            setShowMentions(false);
+            setMentionSearch("");
+        }
+    };
+
+    const handleMentionSelect = (employee: Employee) => {
+        if (!mentionTriggerRef.current) return;
+
+        const { index } = mentionTriggerRef.current;
+        const beforeMention = text.substring(0, index);
+        const afterMention = text.substring(index + mentionSearch.length + 1);
+        const mention = `@${employee.name} `;
+        const newText = beforeMention + mention + afterMention;
+
+        setText(newText);
+        setShowMentions(false);
+        setMentionSearch("");
+    };
+
+    const handleEditMessage = (message: Message) => {
+        if (!message._id) return;
+        setEditingMessageId(message._id);
+        setEditingText(String(message.content || ""));
+    };
+
+    const saveEditedMessage = async () => {
+        if (!editingMessageId || !currentUser?.empId) return;
+        if (!editingText.trim()) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/chat/messages`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "edit",
+                    messageId: editingMessageId,
+                    userId: currentUser.empId,
+                    content: editingText.trim(),
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok || !data?.success || !data?.message) {
+                throw new Error(data?.error || "Failed to edit message");
+            }
+
+            const updatedMessage: Message = data.message;
+            setMessages((prev) =>
+                prev.map((msg) => (msg._id === editingMessageId ? { ...msg, ...updatedMessage } : msg))
+            );
+
+            socket?.emit("message-edited", {
+                messageId: editingMessageId,
+                content: updatedMessage.content,
+                editedAt: updatedMessage.editedAt || new Date().toISOString(),
+            });
+
+            setEditingMessageId("");
+            setEditingText("");
+        } catch (error: any) {
+            console.error("Edit failed", error);
+        }
+    };
+
+    const deleteMessage = async (messageId: string) => {
+        if (!currentUser?.empId) return;
+        
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/chat/messages?messageId=${encodeURIComponent(messageId)}&userId=${encodeURIComponent(currentUser.empId)}`,
+                { method: "DELETE" }
+            );
+            const data = await response.json();
+            if (!response.ok || !data?.success) {
+                throw new Error(data?.error || "Failed to delete message");
+            }
+
+            setMessages((prev) => prev.filter((msg) => msg._id !== messageId));
+            socket?.emit("message-deleted", { messageId, roomId: activeRoomId });
+            setRefreshTick((prev) => prev + 1);
+        } catch (error: any) {
+            console.error("Delete failed", error);
+        }
+    };
+
+    const toggleReaction = (messageId: string, emoji: string) => {
+        if (!currentUser?.empId) return;
+        setReactionsByMessage((prev) => {
+            const existing = prev[messageId] || [];
+            const next = existing.includes(emoji)
+                ? existing.filter((item) => item !== emoji)
+                : [...existing, emoji];
+            return { ...prev, [messageId]: next };
+        });
+        socket?.emit("message-reaction", {
+            messageId,
+            emoji,
+            userId: currentUser.empId,
+        });
+    };
+
+    const handleForwardMessage = (message: Message) => {
+        setForwardMessage(message);
+        setForwardSearch("");
+        setIsForwardModalOpen(true);
+    };
+
+    const forwardToEmployee = async (targetEmployee: Employee) => {
+        if (!currentUser?.empId || !targetEmployee?.empId || !forwardMessage) return;
+
+        try {
+            const roomId = makeRoomId(currentUser.empId, targetEmployee.empId);
+            const content = String(forwardMessage.content || "").trim()
+                ? `Forwarded: ${String(forwardMessage.content || "").trim()}`
+                : "Forwarded message";
+
+            const persistRes = await fetch(`${API_BASE_URL}/api/chat/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    roomId,
+                    chatType: "direct",
+                    senderId: currentUser.empId,
+                    senderName: currentUser.name,
+                    receiverId: targetEmployee.empId,
+                    content,
+                    attachments: Array.isArray(forwardMessage.attachments) ? forwardMessage.attachments : [],
+                    replyTo: {
+                        messageId: forwardMessage._id || "",
+                        senderName: forwardMessage.senderName || "",
+                        content: forwardMessage.content || "",
+                    },
+                }),
+            });
+            const persistData = await persistRes.json();
+            if (!persistRes.ok || !persistData?.success || !persistData?.message) {
+                throw new Error(persistData?.error || "Failed to forward message");
+            }
+
+            const savedMessage: Message = persistData.message;
+            socket?.emit("send-message", {
+                ...savedMessage,
+                roomId,
+                recipientIds: [targetEmployee.empId],
+            });
+            setIsForwardModalOpen(false);
+            setForwardMessage(null);
+            setRefreshTick((prev) => prev + 1);
+        } catch (error: any) {
+            console.error("Forward failed", error);
+        }
+    };
+
+    const startCall = async (mode: "audio" | "video") => {
+        if (!selectedConversation || !currentUser?.empId) return;
+        
+        const participantIds =
+            selectedConversation.kind === "group"
+                ? selectedConversation.memberIds
+                : [currentUser.empId, selectedConversation.partnerId];
+        const conversationId =
+            selectedConversation.kind === "group" ? selectedConversation.groupId : selectedConversation.partnerId;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/calls`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    createdBy: currentUser.empId,
+                    participantIds,
+                    mode,
+                    conversationType: selectedConversation.kind,
+                    conversationId,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok || !data?.success || !data?.url) {
+                throw new Error(data?.error || "Failed to create call");
+            }
+
+            const callUrl = `${API_BASE_URL}${data.url}`;
+            Linking.openURL(callUrl);
+        } catch (error: any) {
+            console.error("Call failed", error);
+        }
+    };
+
     const handleSelectFiles = async () => {
         try {
             const result = await DocumentPicker.getDocumentAsync({
@@ -589,6 +905,11 @@ export default function ChatContent() {
                 receiverId: selectedConversation.kind === "group" ? undefined : selectedConversation.partnerId,
                 content,
                 attachments: uploadedAttachments,
+                replyTo: replyTo ? {
+                    messageId: replyTo._id,
+                    senderName: replyTo.senderName,
+                    content: replyTo.content,
+                } : undefined,
             };
 
             const persistRes = await fetch(`${API_BASE_URL}/api/chat/messages`, {
@@ -614,6 +935,7 @@ export default function ChatContent() {
 
             setText("");
             setPendingFiles([]);
+            setReplyTo(null);
             setRefreshTick((prev) => prev + 1);
         } catch (error) {
             console.error("Sending failed", error);
@@ -712,9 +1034,22 @@ export default function ChatContent() {
                                             style={[styles.conversationItem, isActive && styles.conversationItemActive]}
                                         >
                                             <View style={styles.conversationAvatar}>
-                                                <Text style={styles.conversationAvatarText}>
-                                                    {conversation.kind === "group" ? "G" : label.charAt(0).toUpperCase()}
-                                                </Text>
+                                                {conversation.kind === "group" ? (
+                                                    <View style={styles.groupAvatarIcon}>
+                                                        <Users size={20} color="#64748b" />
+                                                    </View>
+                                                ) : (
+                                                    employeeById[conversation.partnerId]?.photo ? (
+                                                        <Image 
+                                                            source={{ uri: employeeById[conversation.partnerId].photo }} 
+                                                            style={styles.avatarImage} 
+                                                        />
+                                                    ) : (
+                                                        <Text style={styles.conversationAvatarText}>
+                                                            {label.charAt(0).toUpperCase()}
+                                                        </Text>
+                                                    )
+                                                )}
                                             </View>
                                             <View style={styles.conversationInfo}>
                                                 <View style={styles.conversationHeader}>
@@ -741,15 +1076,43 @@ export default function ChatContent() {
                                     <ChevronLeft size={24} color="#0f172a" />
                                 </TouchableOpacity>
                                 <TouchableOpacity
-                                    onPress={() => setIsProfilePopupOpen(prev => !prev)}
+                                    onPress={() => {
+                                        if (selectedConversation?.kind === "group") setIsGroupPanelOpen(true);
+                                        else setIsProfilePopupOpen(true);
+                                    }}
                                     style={styles.chatHeaderInfo}
                                 >
-                                    <Text style={styles.headerTitle}>
-                                        {selectedConversation.kind === "group"
-                                            ? selectedConversation.groupName
-                                            : employeeById[selectedConversation.partnerId]?.displayName || selectedEmployee?.name || selectedConversation.partnerId}
-                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <View style={styles.headerAvatarContainer}>
+                                            {selectedConversation.kind === "group" ? (
+                                                <Users size={16} color="#64748b" />
+                                            ) : (
+                                                selectedEmployee?.photo ? (
+                                                    <Image source={{ uri: selectedEmployee.photo }} style={styles.headerAvatarImage} />
+                                                ) : (
+                                                    <Text style={styles.headerAvatarText}>
+                                                        {(selectedEmployee?.displayName || selectedEmployee?.name || "?").charAt(0).toUpperCase()}
+                                                    </Text>
+                                                )
+                                            )}
+                                        </View>
+                                        <View>
+                                            <Text style={styles.headerTitle}>
+                                                {selectedConversation.kind === "group"
+                                                    ? selectedConversation.groupName
+                                                    : employeeById[selectedConversation.partnerId]?.displayName || selectedEmployee?.name || selectedConversation.partnerId}
+                                            </Text>
+                                        </View>
+                                    </View>
                                 </TouchableOpacity>
+                                <View style={styles.callButtons}>
+                                    <TouchableOpacity onPress={() => startCall('audio')} style={styles.callButton}>
+                                        <Phone size={20} color="#64748b" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => startCall('video')} style={styles.callButton}>
+                                        <Video size={20} color="#64748b" />
+                                    </TouchableOpacity>
+                                </View>
                             </View>
 
                             <FlatList
@@ -760,19 +1123,165 @@ export default function ChatContent() {
                                 contentContainerStyle={{ padding: 16, gap: 12 }}
                                 renderItem={({ item: message }) => {
                                     const isMyMessage = normalizeId(message.senderId) === normalizeId(currentUser?.empId);
+                                    const reactions = reactionsByMessage[message._id || ""] || [];
 
                                     return (
                                         <View style={[styles.messageWrapper, isMyMessage ? styles.messageWrapperRight : styles.messageWrapperLeft]}>
-                                            <View style={[styles.messageBubble, isMyMessage ? styles.messageBubbleRight : styles.messageBubbleLeft]}>
+                                            {!isMyMessage && (
+                                                <View style={styles.messageBubbleAvatar}>
+                                                    {employeeById[message.senderId]?.photo ? (
+                                                        <Image source={{ uri: employeeById[message.senderId].photo }} style={styles.messageBubbleAvatarImage} />
+                                                    ) : (
+                                                        <Text style={styles.messageBubbleAvatarText}>
+                                                            {(message.senderName || "?").charAt(0).toUpperCase()}
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                            )}
+                                            <TouchableOpacity
+                                                onLongPress={() => {
+                                                    if (isMyMessage) {
+                                                        handleEditMessage(message);
+                                                    } else {
+                                                        setReplyTo(message);
+                                                    }
+                                                }}
+                                                style={[styles.messageBubble, isMyMessage ? styles.messageBubbleRight : styles.messageBubbleLeft]}
+                                            >
                                                 {!isMyMessage && (
                                                     <Text style={styles.senderName}>{message.senderName}</Text>
                                                 )}
-                                                <Text style={[styles.messageContent, isMyMessage && { color: "#064e3b" }]}>{message.content}</Text>
-                                            </View>
+                                                {message.replyTo && (
+                                                    <View style={[styles.replyPreview, { marginHorizontal: 0, marginTop: 0, marginBottom: 8 }]}>
+                                                        <View style={styles.replyPreviewContent}>
+                                                            <Text style={styles.replyPreviewName}>{message.replyTo.senderName}</Text>
+                                                            <Text style={styles.replyPreviewText} numberOfLines={1}>{message.replyTo.content}</Text>
+                                                        </View>
+                                                    </View>
+                                                )}
+                                                {editingMessageId === message._id ? (
+                                                    <View>
+                                                        <TextInput
+                                                            style={styles.messageInput}
+                                                            value={editingText}
+                                                            onChangeText={setEditingText}
+                                                            autoFocus
+                                                        />
+                                                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8, gap: 8 }}>
+                                                            <TouchableOpacity onPress={() => setEditingMessageId("")}>
+                                                                <Text style={{ color: '#ef4444' }}>Cancel</Text>
+                                                            </TouchableOpacity>
+                                                            <TouchableOpacity onPress={saveEditedMessage}>
+                                                                <Text style={{ color: '#059669', fontWeight: 'bold' }}>Save</Text>
+                                                            </TouchableOpacity>
+                                                        </View>
+                                                    </View>
+                                                ) : (
+                                                    <View>
+                                                        {message.attachments && message.attachments.length > 0 && (
+                                                            <View style={styles.attachmentsContainer}>
+                                                                {message.attachments.map((att, idx) => (
+                                                                    <TouchableOpacity 
+                                                                        key={`${message._id}-att-${idx}`} 
+                                                                        onPress={() => Linking.openURL(att.url)}
+                                                                        style={styles.attachmentItem}
+                                                                    >
+                                                                        {att.fileType?.startsWith('image') || att.url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                                                            <Image source={{ uri: att.url }} style={styles.attachmentImage} />
+                                                                        ) : (
+                                                                            <View style={styles.fileAttachment}>
+                                                                                <Paperclip size={16} color="#64748b" />
+                                                                                <Text style={styles.fileName} numberOfLines={1}>{att.fileName}</Text>
+                                                                            </View>
+                                                                        )}
+                                                                    </TouchableOpacity>
+                                                                ))}
+                                                            </View>
+                                                        )}
+                                                        <Text style={[styles.messageContent, isMyMessage && { color: "#064e3b" }]}>{message.content}</Text>
+                                                    </View>
+                                                )}
+                                                
+                                                {reactions.length > 0 && (
+                                                    <View style={styles.reactionsContainer}>
+                                                        {Array.from(new Set(reactions)).map((emoji, idx) => (
+                                                            <TouchableOpacity
+                                                                key={`${message._id}-reaction-${idx}`}
+                                                                style={styles.reactionBadge}
+                                                                onPress={() => toggleReaction(message._id || "", emoji)}
+                                                            >
+                                                                <Text style={styles.reactionText}>{emoji}</Text>
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </View>
+                                                )}
+
+                                                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4, gap: 8 }}>
+                                                    <Text style={{ fontSize: 10, color: '#64748b' }}>
+                                                        {formatTime(message.createdAt)}
+                                                        {message.editedAt && " (edited)"}
+                                                    </Text>
+                                                    {isMyMessage && (
+                                                        <TouchableOpacity onPress={() => deleteMessage(message._id || "")}>
+                                                            <Trash2 size={12} color="#94a3b8" />
+                                                        </TouchableOpacity>
+                                                    )}
+                                                    <TouchableOpacity onPress={() => handleForwardMessage(message)}>
+                                                        <Forward size={12} color="#94a3b8" />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </TouchableOpacity>
                                         </View>
                                     );
                                 }}
                             />
+
+                            {showMentions && (
+                                <View style={styles.mentionPopup}>
+                                    <FlatList
+                                        data={mentionResults}
+                                        keyExtractor={(item) => item.empId || ""}
+                                        renderItem={({ item }) => (
+                                            <TouchableOpacity
+                                                style={styles.mentionItem}
+                                                onPress={() => handleMentionSelect(item)}
+                                            >
+                                                <View style={styles.mentionAvatar}>
+                                                    {item.photo ? (
+                                                        <Image source={{ uri: item.photo }} style={styles.avatarImage} />
+                                                    ) : (
+                                                        <Text style={styles.mentionAvatarText}>
+                                                            {(item.displayName || item.name || "U").charAt(0).toUpperCase()}
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                                <Text style={styles.mentionName}>{item.displayName || item.name}</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                        ListEmptyComponent={() => (
+                                            <View style={styles.mentionEmpty}>
+                                                <Text style={styles.mentionEmptyText}>
+                                                    {mentionLoading ? "Searching..." : "No results found"}
+                                                </Text>
+                                            </View>
+                                        )}
+                                    />
+                                </View>
+                            )}
+
+                            {replyTo && (
+                                <View style={styles.replyPreview}>
+                                    <View style={styles.replyPreviewContent}>
+                                        <Text style={styles.replyPreviewName}>{replyTo.senderName}</Text>
+                                        <Text style={styles.replyPreviewText} numberOfLines={1}>
+                                            {replyTo.content || "Attachment"}
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity onPress={() => setReplyTo(null)}>
+                                        <X size={16} color="#64748b" />
+                                    </TouchableOpacity>
+                                </View>
+                            )}
 
                             {pendingFiles.length > 0 && (
                                 <View style={styles.pendingFilesContainer}>
@@ -800,10 +1309,11 @@ export default function ChatContent() {
                                     <Paperclip size={20} color="#64748b" />
                                 </TouchableOpacity>
                                 <TextInput
+                                    ref={messageInputRef}
                                     style={styles.messageInput}
                                     placeholder="Type a message..."
                                     value={text}
-                                    onChangeText={setText}
+                                    onChangeText={handleChatTextChange}
                                     multiline
                                 />
                                 <TouchableOpacity
@@ -885,25 +1395,198 @@ export default function ChatContent() {
                                     </View>
 
                                     <View style={styles.profileSection}>
-                                        <Text style={styles.profileSectionTitle}>Media</Text>
-                                        {mediaItems.length > 0 ? (
-                                            <View style={styles.mediaGrid}>
-                                                {mediaItems.slice(0, 9).map((item) => (
-                                                    <TouchableOpacity
-                                                        key={item.key}
-                                                        onPress={() => Linking.openURL(item.attachment.url)}
-                                                        style={styles.mediaItem}
-                                                    >
-                                                        <Image source={{ uri: item.attachment.url }} style={styles.mediaImage} />
-                                                    </TouchableOpacity>
-                                                ))}
+                                        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', marginBottom: 12 }}>
+                                            {["media", "links", "docs"].map((tab) => (
+                                                <TouchableOpacity
+                                                    key={tab}
+                                                    onPress={() => setProfileTab(tab as any)}
+                                                    style={{
+                                                        paddingVertical: 10,
+                                                        paddingHorizontal: 16,
+                                                        borderBottomWidth: profileTab === tab ? 2 : 0,
+                                                        borderBottomColor: '#059669'
+                                                    }}
+                                                >
+                                                    <Text style={{
+                                                        fontSize: 14,
+                                                        fontWeight: '600',
+                                                        color: profileTab === tab ? '#059669' : '#64748b',
+                                                        textTransform: 'capitalize'
+                                                    }}>{tab}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+
+                                        {profileTab === "media" && (
+                                            <View>
+                                                {mediaItems.length > 0 ? (
+                                                    <View style={styles.mediaGrid}>
+                                                        {mediaItems.slice(0, 9).map((item) => (
+                                                            <TouchableOpacity
+                                                                key={item.key}
+                                                                onPress={() => Linking.openURL(item.attachment.url)}
+                                                                style={styles.mediaItem}
+                                                            >
+                                                                <Image source={{ uri: item.attachment.url }} style={styles.mediaImage} />
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </View>
+                                                ) : (
+                                                    <Text style={styles.profileEmptyText}>No shared media.</Text>
+                                                )}
                                             </View>
-                                        ) : (
-                                            <Text style={styles.profileEmptyText}>No shared media.</Text>
+                                        )}
+
+                                        {profileTab === "links" && (
+                                            <View>
+                                                <Text style={styles.profileEmptyText}>No shared links.</Text>
+                                            </View>
+                                        )}
+
+                                        {profileTab === "docs" && (
+                                            <View>
+                                                <Text style={styles.profileEmptyText}>No shared documents.</Text>
+                                            </View>
                                         )}
                                     </View>
                                 </ScrollView>
                             )}
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* Group Info Modal */}
+                <Modal transparent visible={isGroupPanelOpen} animationType="slide">
+                    <View style={styles.modalBackdrop}>
+                        <View style={styles.modalContent}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Group Info</Text>
+                                <TouchableOpacity onPress={() => setIsGroupPanelOpen(false)}>
+                                    <X size={20} color="#64748b" />
+                                </TouchableOpacity>
+                            </View>
+
+                            {selectedGroup && (
+                                <ScrollView style={styles.modalScroll}>
+                                    <View style={styles.profileHeader}>
+                                        <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
+                                            <Users size={40} color="#475569" />
+                                        </View>
+                                        <Text style={styles.profileName}>{selectedGroup.groupName}</Text>
+                                        <Text style={styles.profileDept}>{groupMembers.length} Members</Text>
+                                    </View>
+
+                                    <View style={styles.profileSection}>
+                                        <Text style={styles.profileSectionTitle}>Members</Text>
+                                        {groupMembers.map((m) => (
+                                            <View key={m.empId} style={styles.conversationItem}>
+                                                <View style={styles.conversationAvatar}>
+                                                    {m.employee?.photo ? (
+                                                        <Image source={{ uri: m.employee.photo }} style={styles.avatarImage} />
+                                                    ) : (
+                                                        <Text style={styles.conversationAvatarText}>
+                                                            {(m.employee?.displayName || m.employee?.name || m.empId).charAt(0).toUpperCase()}
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                                <View style={styles.conversationInfo}>
+                                                    <Text style={styles.conversationName}>{m.employee?.displayName || m.employee?.name || m.empId}</Text>
+                                                    {m.isAdmin && <Text style={{ fontSize: 10, color: '#059669' }}>Admin</Text>}
+                                                </View>
+                                            </View>
+                                        ))}
+                                    </View>
+
+                                    <View style={styles.profileSection}>
+                                        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', marginBottom: 12 }}>
+                                            {["media", "links", "docs"].map((tab) => (
+                                                <TouchableOpacity
+                                                    key={tab}
+                                                    onPress={() => setProfileTab(tab as any)}
+                                                    style={{
+                                                        paddingVertical: 10,
+                                                        paddingHorizontal: 16,
+                                                        borderBottomWidth: profileTab === tab ? 2 : 0,
+                                                        borderBottomColor: '#059669'
+                                                    }}
+                                                >
+                                                    <Text style={{
+                                                        fontSize: 14,
+                                                        fontWeight: '600',
+                                                        color: profileTab === tab ? '#059669' : '#64748b',
+                                                        textTransform: 'capitalize'
+                                                    }}>{tab}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+
+                                        {profileTab === "media" && (
+                                            <View>
+                                                {mediaItems.length > 0 ? (
+                                                    <View style={styles.mediaGrid}>
+                                                        {mediaItems.slice(0, 9).map((item) => (
+                                                            <TouchableOpacity
+                                                                key={item.key}
+                                                                onPress={() => Linking.openURL(item.attachment.url)}
+                                                                style={styles.mediaItem}
+                                                            >
+                                                                <Image source={{ uri: item.attachment.url }} style={styles.mediaImage} />
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </View>
+                                                ) : (
+                                                    <Text style={styles.profileEmptyText}>No shared media.</Text>
+                                                )}
+                                            </View>
+                                        )}
+                                        {/* Links and Docs can follow same pattern as ProfileModal */}
+                                    </View>
+                                </ScrollView>
+                            )}
+                        </View>
+                    </View>
+                </Modal>
+
+                {/* Forward Modal */}
+                <Modal transparent visible={isForwardModalOpen} animationType="fade">
+                    <View style={styles.forwardModal}>
+                        <View style={styles.forwardContent}>
+                            <View style={styles.modalHeader}>
+                                <Text style={styles.modalTitle}>Forward to...</Text>
+                                <TouchableOpacity onPress={() => setIsForwardModalOpen(false)}>
+                                    <X size={20} color="#64748b" />
+                                </TouchableOpacity>
+                            </View>
+                            <TextInput
+                                style={styles.searchInput}
+                                placeholder="Search employees..."
+                                value={forwardSearch}
+                                onChangeText={setForwardSearch}
+                            />
+                            <FlatList
+                                data={employees.filter(e => 
+                                    (e.displayName || e.name || "").toLowerCase().includes(forwardSearch.toLowerCase())
+                                )}
+                                keyExtractor={(item) => item.empId || ""}
+                                style={styles.forwardList}
+                                renderItem={({ item }) => (
+                                    <TouchableOpacity
+                                        style={styles.conversationItem}
+                                        onPress={() => forwardToEmployee(item)}
+                                    >
+                                        <View style={styles.conversationAvatar}>
+                                            {item.photo ? (
+                                                <Image source={{ uri: item.photo }} style={styles.avatarImage} />
+                                            ) : (
+                                                <Text style={styles.conversationAvatarText}>
+                                                    {(item.displayName || item.name || "U").charAt(0).toUpperCase()}
+                                                </Text>
+                                            )}
+                                        </View>
+                                        <Text style={styles.conversationName}>{item.displayName || item.name}</Text>
+                                    </TouchableOpacity>
+                                )}
+                            />
                         </View>
                     </View>
                 </Modal>
@@ -1011,25 +1694,31 @@ const styles = StyleSheet.create({
     chatHeader: {
         flexDirection: "row",
         alignItems: "center",
-        padding: 16,
-        paddingTop: Platform.OS === 'android' ? 40 : 16,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
         borderBottomWidth: 1,
         borderBottomColor: "#e2e8f0",
         backgroundColor: "#ffffff",
-        gap: 12,
+        height: 64,
     },
     chatHeaderInfo: {
         flex: 1,
         justifyContent: "center",
+        marginLeft: 4,
     },
     backButton: {
         marginRight: 4,
         padding: 4,
     },
     headerTitle: {
-        fontSize: 18,
-        fontWeight: "600",
+        fontSize: 16,
+        fontWeight: "700",
         color: "#0f172a",
+    },
+    conversationPreview: {
+        fontSize: 12,
+        color: "#64748b",
+        marginTop: -1,
     },
     createGroupBtn: {
         padding: 6,
@@ -1058,6 +1747,39 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         fontSize: 14,
         color: "#0f172a",
+    },
+    avatarImage: {
+        width: "100%",
+        height: "100%",
+        borderRadius: 20,
+    },
+    groupAvatarIcon: {
+        width: "100%",
+        height: "100%",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#f1f5f9",
+        borderRadius: 20,
+    },
+    headerAvatarContainer: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        borderWidth: 2,
+        marginRight: 10,
+        overflow: "hidden",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#f1f5f9",
+    },
+    headerAvatarImage: {
+        width: "100%",
+        height: "100%",
+    },
+    headerAvatarText: {
+        fontSize: 14,
+        fontWeight: "700",
+        color: "#64748b",
     },
     conversationList: {
         flex: 1,
@@ -1113,10 +1835,6 @@ const styles = StyleSheet.create({
         fontSize: 10,
         fontWeight: "bold",
     },
-    conversationPreview: {
-        fontSize: 12,
-        color: "#64748b",
-    },
     messagesList: {
         flex: 1,
     },
@@ -1126,14 +1844,38 @@ const styles = StyleSheet.create({
     },
     messageWrapperLeft: {
         justifyContent: "flex-start",
+        paddingLeft: 4,
     },
     messageWrapperRight: {
         justifyContent: "flex-end",
     },
+    messageBubbleAvatar: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        marginRight: 8,
+        marginTop: 4,
+        backgroundColor: "#f1f5f9",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+    },
+    messageBubbleAvatarImage: {
+        width: "100%",
+        height: "100%",
+    },
+    messageBubbleAvatarText: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: "#64748b",
+    },
     messageBubble: {
         maxWidth: "80%",
         borderRadius: 12,
-        padding: 12,
+        padding: 10,
+        position: "relative",
     },
     messageBubbleLeft: {
         backgroundColor: "#ffffff",
@@ -1142,6 +1884,33 @@ const styles = StyleSheet.create({
     },
     messageBubbleRight: {
         backgroundColor: "#d1fae5",
+    },
+    attachmentsContainer: {
+        marginBottom: 8,
+        gap: 4,
+    },
+    attachmentItem: {
+        borderRadius: 8,
+        overflow: "hidden",
+        backgroundColor: "#f1f5f9",
+    },
+    attachmentImage: {
+        width: 200,
+        height: 200,
+        resizeMode: "cover",
+    },
+    fileAttachment: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 8,
+        gap: 8,
+        backgroundColor: "#f1f5f9",
+        borderRadius: 6,
+    },
+    fileName: {
+        fontSize: 12,
+        color: "#475569",
+        flex: 1,
     },
     senderName: {
         fontSize: 12,
@@ -1330,5 +2099,139 @@ const styles = StyleSheet.create({
     profileEmptyText: {
         fontSize: 12,
         color: "#64748b",
+    },
+    // Mentions
+    mentionPopup: {
+        position: "absolute",
+        bottom: 70,
+        left: 12,
+        right: 12,
+        backgroundColor: "#ffffff",
+        borderRadius: 12,
+        maxHeight: 200,
+        elevation: 10,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        zIndex: 1000,
+    },
+    mentionItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: "#f1f5f9",
+    },
+    mentionAvatar: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: "#e2e8f0",
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 10,
+    },
+    mentionAvatarText: {
+        fontSize: 14,
+        fontWeight: "bold",
+        color: "#475569",
+    },
+    mentionName: {
+        fontSize: 14,
+        color: "#0f172a",
+        fontWeight: "500",
+    },
+    mentionEmpty: {
+        padding: 20,
+        alignItems: "center",
+    },
+    mentionEmptyText: {
+        color: "#64748b",
+        fontSize: 13,
+    },
+    // Reply Preview
+    replyPreview: {
+        flexDirection: "row",
+        backgroundColor: "#f8fafc",
+        padding: 10,
+        borderLeftWidth: 4,
+        borderLeftColor: "#059669",
+        alignItems: "center",
+        marginHorizontal: 12,
+        marginTop: 8,
+        borderRadius: 4,
+    },
+    replyPreviewContent: {
+        flex: 1,
+    },
+    replyPreviewName: {
+        fontSize: 12,
+        fontWeight: "bold",
+        color: "#059669",
+        marginBottom: 2,
+    },
+    replyPreviewText: {
+        fontSize: 12,
+        color: "#64748b",
+    },
+    // Forward Modal
+    forwardModal: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        justifyContent: "center",
+        padding: 20,
+    },
+    forwardContent: {
+        backgroundColor: "#ffffff",
+        borderRadius: 16,
+        maxHeight: "80%",
+        padding: 16,
+    },
+    forwardList: {
+        marginTop: 12,
+    },
+    // Reactions
+    reactionsContainer: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        marginTop: 4,
+        gap: 4,
+    },
+    reactionBadge: {
+        backgroundColor: "#ffffff",
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        borderRadius: 12,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+    },
+    reactionText: {
+        fontSize: 12,
+    },
+    // Call Styles
+    callButtons: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+    },
+    callButton: {
+        padding: 10,
+        borderRadius: 20,
+        backgroundColor: "transparent",
+    },
+    // Online indicator
+    onlineStatus: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        backgroundColor: "#10b981",
+        borderWidth: 1.5,
+        borderColor: "#ffffff",
+        position: "absolute",
+        bottom: 0,
+        right: 0,
     },
 });
