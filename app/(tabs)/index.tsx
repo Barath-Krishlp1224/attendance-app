@@ -15,6 +15,8 @@ import {
 import Toast from "react-native-toast-message";
 
 import logoImage from "../../assets/logo-hd.png";
+import KeyboardAwareScrollView from "../../components/ui/keyboard-aware-scroll-view";
+import { API_BASE_URL } from "../../utils/mobileSession";
 
 type Role = "Admin" | "Manager" | "TeamLead" | "Employee";
 type Team =
@@ -27,8 +29,6 @@ type Team =
   | "HR"
   | "Admin & Operations"
   | "TL Accountant";
-
-const API_BASE_URL = "https://unity-uat.lemonpay.in";
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -83,10 +83,13 @@ export default function LoginScreen() {
       const userTeam = data.user.team as Team | undefined;
 
       await AsyncStorage.multiSet([
+        ["userId", data.user.id || ""],
         ["userRole", userRole],
         ["userEmpId", data.user.empId],
         ["userName", data.user.name || ""],
         ["userTeam", userTeam || ""],
+        ["userDesignation", data.user.designation || ""],
+        ["userEmail", data.user.mailId || ""],
       ]);
 
       Toast.show({
@@ -111,81 +114,89 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
     >
       <View style={styles.backgroundPattern}>
         <View style={styles.yellowAccent} />
         <View style={styles.greenAccent} />
       </View>
 
-      <View style={styles.logoContainer}>
-        <Image source={logoImage} style={styles.logo} />
-        <Text style={styles.brandTagline}>Unity Attendance Management System</Text>
-      </View>
-
-      <View style={styles.loginCard}>
-        <View style={styles.cardHeader}>
-
-          <Text style={styles.welcomeText}>Welcome Back</Text>
-          <Text style={styles.signInText}>Please sign in to continue</Text>
+      <KeyboardAwareScrollView
+        avoidKeyboard={false}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        extraScrollHeight={140}
+      >
+        <View style={styles.logoContainer}>
+          <Image source={logoImage} style={styles.logo} />
+          <Text style={styles.brandTagline}>Unity Attendance Management System</Text>
         </View>
 
-        <View style={styles.formContainer}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Employee ID / Email</Text>
-            <View style={styles.inputBox}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Enter your ID or email"
-                placeholderTextColor="#94a3b8"
-                value={empId}
-                onChangeText={setEmpId}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                returnKeyType="next"
-              />
-            </View>
+        <View style={styles.loginCard}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.welcomeText}>Welcome Back</Text>
+            <Text style={styles.signInText}>Please sign in to continue</Text>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Password</Text>
-            <View style={styles.inputBox}>
-              <TextInput
-                style={styles.textInputWithIcon}
-                placeholder="Enter your password"
-                placeholderTextColor="#94a3b8"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                returnKeyType="done"
-                onSubmitEditing={handleLogin}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={showPassword ? "eye-off-outline" : "eye-outline"}
-                  size={22}
-                  color="#64748b"
+          <View style={styles.formContainer}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Employee ID / Email</Text>
+              <View style={styles.inputBox}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter your ID or email"
+                  placeholderTextColor="#94a3b8"
+                  value={empId}
+                  onChangeText={setEmpId}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  returnKeyType="next"
                 />
-              </TouchableOpacity>
+              </View>
             </View>
-          </View>
 
-          <TouchableOpacity
-            onPress={handleLogin}
-            disabled={loading}
-            style={[styles.loginButton, loading && styles.loginButtonDisabled]}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.loginButtonText}>
-              {loading ? "Signing In..." : "Sign In"}
-            </Text>
-          </TouchableOpacity>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <View style={styles.inputBox}>
+                <TextInput
+                  style={styles.textInputWithIcon}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#94a3b8"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowPassword(!showPassword)}
+                  style={styles.eyeIcon}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye-off-outline" : "eye-outline"}
+                    size={22}
+                    color="#64748b"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              onPress={handleLogin}
+              disabled={loading}
+              style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.loginButtonText}>
+                {loading ? "Signing In..." : "Sign In"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </KeyboardAwareScrollView>
 
       <Toast />
     </KeyboardAvoidingView>
@@ -196,8 +207,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8fafc",
+  },
+  scrollContent: {
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingTop: 56,
+    paddingBottom: 40,
   },
   backgroundPattern: {
     position: "absolute",
@@ -255,6 +271,7 @@ const styles = StyleSheet.create({
     elevation: 8,
     borderWidth: 1,
     borderColor: "rgba(148, 163, 184, 0.1)",
+    marginBottom: 24,
   },
   cardHeader: {
     alignItems: "center",

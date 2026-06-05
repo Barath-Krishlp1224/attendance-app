@@ -13,8 +13,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon-foreground.png",
-        "monochromeImage": "./assets/images/app-icon-foreground.png",
+        "foregroundImage": "./assets/images/app-icon.png",
+        "monochromeImage": "./assets/images/app-icon.png",
         "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,

@@ -31,6 +31,7 @@ export interface AttendanceRecord {
 }
 
 export interface RequestItem {
+  _id?: string;
   id: string;
   leaveType?: string;
   permissionType?: string;
@@ -51,6 +52,18 @@ export interface RequestItem {
   empIdOrEmail?: string;
   employeeId?: string;
   employeeName?: string;
+  employeeEmail?: string;
+  approverName?: string;
+  approverRole?: string;
+  approvalRemarks?: string;
+  approvedAt?: string;
+  actionHistory?: {
+    action?: string;
+    performedBy?: string;
+    performedByRole?: string;
+    performedAt?: string;
+    reason?: string;
+  }[];
 }
 
 export interface StatBoxProps {

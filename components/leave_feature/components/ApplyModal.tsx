@@ -1,9 +1,10 @@
 import React from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Text, TouchableOpacity, View } from "react-native";
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import { X } from "lucide-react-native";
 import { Recipient } from "../types";
 import { styles } from "../styles";
+import KeyboardAwareScrollView from "../../ui/keyboard-aware-scroll-view";
 import EmailNotificationsSection from "./EmailNotificationsSection";
 import EmployeeInfoCard from "./EmployeeInfoCard";
 import LeaveForm from "./LeaveForm";
@@ -180,7 +181,13 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        <KeyboardAwareScrollView
+          style={styles.modalBody}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 40 }}
+          extraScrollHeight={120}
+          avoidKeyboard={false}
+        >
           <EmployeeInfoCard employeeName={employeeName} empIdOrEmail={empIdOrEmail} />
 
           <EmailNotificationsSection
@@ -275,7 +282,7 @@ const ApplyModal: React.FC<ApplyModalProps> = ({
               </View>
             )}
           </TouchableOpacity>
-        </ScrollView>
+        </KeyboardAwareScrollView>
       </View>
     </KeyboardAvoidingView>
 

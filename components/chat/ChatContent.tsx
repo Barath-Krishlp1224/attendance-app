@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
-import { useRouter } from "expo-router";
 import {
     CalendarDays,
     ChevronLeft,
@@ -44,8 +43,12 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { io, Socket } from "socket.io-client";
+import TopBar from "../common/TopBar";
+import FooterNav, {
+    getFooterNavClearance,
+} from "../leave_feature/components/FooterNav";
 
 interface Employee {
     _id?: string;
@@ -120,6 +123,9 @@ interface GroupConversation {
 
 type Conversation = DirectConversation | GroupConversation;
 type ChatSidebarFilter = "all" | "unread" | "read" | "groups" | "direct" | "pinned";
+type ConversationListRow =
+    | { type: "section"; id: string; title: string }
+    | { type: "conversation"; id: string; conversation: Conversation };
 
 interface LinkPreview {
     url: string;
@@ -178,6 +184,29 @@ const formatTime = (value?: string | Date) => {
     return date.toLocaleDateString([], { month: "short", day: "numeric" });
 };
 
+const formatDisplayText = (value?: string | null) => {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    return text;
+};
+
+const getEmployeeLabel = (employee?: Employee | null, fallback?: string) => {
+    const displayName = formatDisplayText(employee?.displayName);
+    if (displayName) return displayName;
+
+    const name = formatDisplayText(employee?.name);
+    if (name) return name;
+
+    return formatDisplayText(fallback) || "Unknown User";
+};
+
+const getConversationLabel = (conversation: Conversation, employee?: Employee | null) => {
+    if (conversation.kind === "group") {
+        return formatDisplayText(conversation.groupName) || "Unnamed Group";
+    }
+
+    return getEmployeeLabel(employee, conversation.partnerId);
+};
+
 const normalizeId = (value?: string) => String(value || "").trim().toLowerCase();
 
 const showToast = (message: string) => {
@@ -189,7 +218,7 @@ const showToast = (message: string) => {
 };
 
 export default function ChatContent() {
-    const router = useRouter();
+    const insets = useSafeAreaInsets();
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [conversations, setConversations] = useState<Conversation[]>([]);
     const [selectedKey, setSelectedKey] = useState("");
@@ -230,6 +259,7 @@ export default function ChatContent() {
     const onlineUserIdsRef = React.useRef<Set<string>>(new Set());
     const messageInputRef = React.useRef<TextInput | null>(null);
     const mentionTriggerRef = React.useRef<{ index: number; query: string } | null>(null);
+    const conversationListRef = React.useRef<FlatList>(null);
 
     useEffect(() => {
         if (!showMentions) return;
@@ -338,10 +368,10 @@ export default function ChatContent() {
             if (deletedKeys.includes(key)) return false;
             if (!query) return true;
             if (conversation.kind === "group") {
-                return conversation.groupName.toLowerCase().includes(query);
+                return getConversationLabel(conversation).toLowerCase().includes(query);
             }
             const employee = employeeById[normalizeId(conversation.partnerId)];
-            const label = String(employee?.displayName || employee?.name || conversation.partnerId).toLowerCase();
+            const label = getEmployeeLabel(employee, conversation.partnerId).toLowerCase();
             return label.includes(query);
         });
 
@@ -378,6 +408,41 @@ export default function ChatContent() {
             }
         });
     }, [pinnedKeys, sidebarFilter, sortedConversationList]);
+
+    const chatListRows = useMemo(() => {
+        const pinned = filteredConversationList.filter((conversation) =>
+            pinnedKeys.includes(getConversationKey(conversation))
+        );
+        const recent = filteredConversationList.filter(
+            (conversation) => !pinnedKeys.includes(getConversationKey(conversation))
+        );
+
+        const rows: ConversationListRow[] = [];
+
+        if (pinned.length > 0) {
+            rows.push({ type: "section", id: "section-pinned", title: "Pinned" });
+            pinned.forEach((conversation) => {
+                rows.push({
+                    type: "conversation",
+                    id: getConversationKey(conversation),
+                    conversation,
+                });
+            });
+        }
+
+        if (recent.length > 0) {
+            rows.push({ type: "section", id: "section-recent", title: "Recent" });
+            recent.forEach((conversation) => {
+                rows.push({
+                    type: "conversation",
+                    id: getConversationKey(conversation),
+                    conversation,
+                });
+            });
+        }
+
+        return rows;
+    }, [filteredConversationList, pinnedKeys]);
 
     const sidebarFilterCounts = useMemo(() => {
         const counts: Record<ChatSidebarFilter, number> = {
@@ -938,7 +1003,7 @@ export default function ChatContent() {
     const handleChatTextChange = (value: string) => {
         setText(value);
 
-        const textBeforeCursor = value; 
+        const textBeforeCursor = value;
         const mentionMatch = /(^|\s)@([^\s@]*)$/.exec(textBeforeCursor);
 
         if (mentionMatch) {
@@ -1015,7 +1080,7 @@ export default function ChatContent() {
 
     const deleteMessage = async (messageId: string) => {
         if (!currentUser?.empId) return;
-        
+
         try {
             const response = await fetch(
                 `${API_BASE_URL}/api/chat/messages?messageId=${encodeURIComponent(messageId)}&userId=${encodeURIComponent(currentUser.empId)}`,
@@ -1137,7 +1202,7 @@ export default function ChatContent() {
 
     const startCall = async (mode: "audio" | "video") => {
         if (!selectedConversation || !currentUser?.empId) return;
-        
+
         const participantIds =
             selectedConversation.kind === "group"
                 ? selectedConversation.memberIds
@@ -1425,7 +1490,7 @@ export default function ChatContent() {
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
             <KeyboardAvoidingView
                 style={styles.keyboardAvoidingView}
                 behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -1434,24 +1499,32 @@ export default function ChatContent() {
                 <View style={styles.chatContainer}>
                     {!selectedConversation ? (
                         <View style={styles.sidebar}>
-                            <View style={styles.header}>
-                                <View style={styles.headerLeft}>
-                                    <Image source={require("../../assets/logo-hd.png")} style={styles.logo} resizeMode="contain" />
-                                    <Text style={styles.headerTitle}>Chats</Text>
+                            <TopBar subtitle="Chats">
+                                <View style={styles.topBarActions}>
+                                    <TouchableOpacity onPress={() => setIsCreateGroupOpen(true)} style={styles.createGroupBtn}>
+                                        <Plus size={18} color="#059669" />
+                                    </TouchableOpacity>
                                 </View>
-                                <TouchableOpacity onPress={() => setIsCreateGroupOpen(true)} style={styles.createGroupBtn}>
-                                    <Plus size={16} color="#334155" />
-                                </TouchableOpacity>
-                            </View>
+                            </TopBar>
+
                             <View style={styles.searchContainer}>
-                                <Search size={16} color="#94a3b8" style={styles.searchIcon} />
-                                <TextInput
-                                    style={styles.searchInput}
-                                    placeholder="Search employees..."
-                                    value={searchTerm}
-                                    onChangeText={setSearchTerm}
-                                />
+                                <View style={styles.searchInputWrapper}>
+                                    <Search size={16} color="#94a3b8" style={styles.searchIcon} />
+                                    <TextInput
+                                        style={styles.searchInput}
+                                        placeholder="Search employees..."
+                                        placeholderTextColor="#94a3b8"
+                                        value={searchTerm}
+                                        onChangeText={setSearchTerm}
+                                    />
+                                    {searchTerm.length > 0 && (
+                                        <TouchableOpacity onPress={() => setSearchTerm("")} style={styles.searchClear}>
+                                            <X size={14} color="#94a3b8" />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
                             </View>
+
                             <ScrollView
                                 horizontal
                                 showsHorizontalScrollIndicator={false}
@@ -1464,82 +1537,114 @@ export default function ChatContent() {
                                             key={tab.id}
                                             onPress={() => setSidebarFilter(tab.id)}
                                             style={[styles.filterTab, isActive && styles.filterTabActive]}
+                                            activeOpacity={0.7}
                                         >
                                             <Text style={[styles.filterTabText, isActive && styles.filterTabTextActive]}>
                                                 {tab.label}
                                             </Text>
-                                            <View style={[styles.filterBadge, isActive && styles.filterBadgeActive]}>
-                                                <Text style={[styles.filterBadgeText, isActive && styles.filterBadgeTextActive]}>
-                                                    {sidebarFilterCounts[tab.id]}
-                                                </Text>
-                                            </View>
+                                            {sidebarFilterCounts[tab.id] > 0 && (
+                                                <View style={[styles.filterBadge, isActive && styles.filterBadgeActive]}>
+                                                    <Text style={[styles.filterBadgeText, isActive && styles.filterBadgeTextActive]}>
+                                                        {sidebarFilterCounts[tab.id]}
+                                                    </Text>
+                                                </View>
+                                            )}
                                         </TouchableOpacity>
                                     );
                                 })}
                             </ScrollView>
+
                             <FlatList
-                                data={filteredConversationList}
-                                keyExtractor={(item) => getConversationKey(item)}
+                                ref={conversationListRef}
+                                data={chatListRows}
+                                keyExtractor={(item) => item.id}
                                 style={styles.conversationList}
-                                contentContainerStyle={{ flexGrow: 1 }}
-                                renderItem={({ item: conversation }) => {
+                                contentContainerStyle={{ 
+                                    paddingBottom: getFooterNavClearance(insets.bottom) + 80,
+                                    paddingTop: 0,
+                                }}
+                                showsVerticalScrollIndicator={true}
+                                renderItem={({ item, index }) => {
+                                    if (item.type === "section") {
+                                        return (
+                                            <Text style={[
+                                                styles.conversationSectionTitle,
+                                                index === 0 && styles.firstConversationSectionTitle,
+                                            ]}>
+                                                {item.title}
+                                            </Text>
+                                        );
+                                    }
+
+                                    const conversation = item.conversation;
                                     const key = getConversationKey(conversation);
                                     const isActive = selectedKey === key;
                                     const unreadCount = Number(conversation.unreadCount || 0);
                                     const isPinned = pinnedKeys.includes(key);
 
-                                    const label =
-                                        conversation.kind === "group"
-                                            ? conversation.groupName
-                                            : employeeById[normalizeId(conversation.partnerId)]?.displayName ||
-                                            employeeById[normalizeId(conversation.partnerId)]?.name ||
-                                            conversation.partnerId;
+                                    const conversationEmployee =
+                                        conversation.kind === "direct"
+                                            ? employeeById[normalizeId(conversation.partnerId)]
+                                            : undefined;
+                                    const label = getConversationLabel(conversation, conversationEmployee);
+                                    const isOnline = conversationEmployee?.isOnline ?? false;
 
                                     return (
                                         <TouchableOpacity
                                             onPress={() => handleSelectConversation(conversation)}
                                             onLongPress={() => setContextMenu({ key, label, isPinned })}
+                                            activeOpacity={0.7}
                                             style={[styles.conversationItem, isActive && styles.conversationItemActive]}
                                         >
-                                            <View style={styles.conversationAvatar}>
-                                                {conversation.kind === "group" ? (
-                                                    <View style={styles.groupAvatarIcon}>
-                                                        <Users size={20} color="#64748b" />
-                                                    </View>
-                                                ) : (
-                                                    employeeById[normalizeId(conversation.partnerId)]?.photo ? (
-                                                        <Image 
-                                                            source={{ uri: employeeById[normalizeId(conversation.partnerId)]?.photo }} 
-                                                            style={styles.avatarImage} 
+                                            <View style={styles.avatarWrapper}>
+                                                <View style={styles.conversationAvatar}>
+                                                    {conversation.kind === "group" ? (
+                                                        <View style={styles.groupAvatarIcon}>
+                                                            <Users size={22} color="#059669" />
+                                                        </View>
+                                                    ) : conversationEmployee?.photo ? (
+                                                        <Image
+                                                            source={{ uri: conversationEmployee.photo }}
+                                                            style={styles.avatarImage}
                                                         />
                                                     ) : (
                                                         <Text style={styles.conversationAvatarText}>
                                                             {label.charAt(0).toUpperCase()}
                                                         </Text>
-                                                    )
-                                                )}
-                                            </View>
-                                            <View style={styles.conversationInfo}>
-                                                <View style={styles.conversationHeader}>
-                                                    <Text style={styles.conversationName} numberOfLines={1}>{label}</Text>
-                                                    {conversation.lastMessage?.createdAt && (
-                                                        <Text style={styles.conversationTime}>
-                                                            {formatTime(conversation.lastMessage.createdAt)}
-                                                        </Text>
                                                     )}
                                                 </View>
-                                                <View style={styles.conversationSubHeader}>
-                                                    <Text style={styles.conversationPreview} numberOfLines={1}>
+                                                {conversation.kind === "direct" && isOnline && (
+                                                    <View style={styles.onlineDot} />
+                                                )}
+                                            </View>
+
+                                            <View style={styles.conversationContent}>
+                                                <View style={styles.conversationTopRow}>
+                                                    <Text
+                                                        style={[
+                                                            styles.conversationName,
+                                                            unreadCount > 0 && styles.conversationNameBold,
+                                                        ]}
+                                                        numberOfLines={1}
+                                                    >
+                                                        {label}
+                                                    </Text>
+                                                    <View style={styles.conversationTopRight}>
+                                                        {isPinned && <Pin size={11} color="#059669" fill="#059669" style={{ marginRight: 4 }} />}
+                                                        <Text style={[styles.conversationTime, unreadCount > 0 && styles.conversationTimeUnread]}>
+                                                            {formatTime(conversation.lastMessage?.createdAt)}
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                                <View style={styles.conversationBottomRow}>
+                                                    <Text style={[styles.conversationPreview, unreadCount > 0 && styles.conversationPreviewBold]} numberOfLines={1}>
                                                         {conversation.lastMessage?.content || "No messages yet"}
                                                     </Text>
-                                                    <View style={styles.conversationMeta}>
-                                                        {isPinned && <Pin size={12} color="#059669" fill="#059669" />}
-                                                        {unreadCount > 0 && (
-                                                            <View style={styles.unreadBadge}>
-                                                                <Text style={styles.unreadText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
-                                                            </View>
-                                                        )}
-                                                    </View>
+                                                    {unreadCount > 0 && (
+                                                        <View style={styles.unreadBadge}>
+                                                            <Text style={styles.unreadText}>{unreadCount > 99 ? "99+" : unreadCount}</Text>
+                                                        </View>
+                                                    )}
                                                 </View>
                                             </View>
                                         </TouchableOpacity>
@@ -1547,6 +1652,7 @@ export default function ChatContent() {
                                 }}
                                 ListEmptyComponent={() => (
                                     <View style={styles.emptyConversationState}>
+                                        <MessageSquare size={40} color="#cbd5e1" />
                                         <Text style={styles.emptyConversationTitle}>No chats in this view</Text>
                                         <Text style={styles.emptyConversationSubtitle}>Try another filter or search for a teammate.</Text>
                                     </View>
@@ -1556,61 +1662,92 @@ export default function ChatContent() {
                     ) : (
                         <View style={styles.mainChat}>
                             <View style={styles.chatHeader}>
-                                <TouchableOpacity onPress={() => setSelectedKey("")} style={styles.backButton}>
-                                    <ChevronLeft size={24} color="#0f172a" />
+                                <TouchableOpacity
+                                    onPress={() => setSelectedKey("")}
+                                    style={styles.backButton}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                    <ChevronLeft size={26} color="#0f172a" />
                                 </TouchableOpacity>
+
                                 <TouchableOpacity
                                     onPress={() => {
                                         if (selectedConversation?.kind === "group") setIsGroupPanelOpen(true);
                                         else setIsProfilePopupOpen(true);
                                     }}
                                     style={styles.chatHeaderInfo}
+                                    activeOpacity={0.7}
                                 >
-                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <View style={styles.chatHeaderAvatarWrapper}>
                                         <View style={styles.headerAvatarContainer}>
                                             {selectedConversation.kind === "group" ? (
-                                                <Users size={16} color="#64748b" />
+                                                <Users size={18} color="#059669" />
+                                            ) : selectedEmployee?.photo ? (
+                                                <Image source={{ uri: selectedEmployee.photo }} style={styles.headerAvatarImage} />
                                             ) : (
-                                                selectedEmployee?.photo ? (
-                                                    <Image source={{ uri: selectedEmployee.photo }} style={styles.headerAvatarImage} />
-                                                ) : (
-                                                    <Text style={styles.headerAvatarText}>
-                                                        {(selectedEmployee?.displayName || selectedEmployee?.name || "?").charAt(0).toUpperCase()}
-                                                    </Text>
-                                                )
+                                                <Text style={styles.headerAvatarText}>
+                                                    {getEmployeeLabel(selectedEmployee, "?").charAt(0).toUpperCase()}
+                                                </Text>
                                             )}
                                         </View>
-                                        <View>
-                                            <Text style={styles.headerTitle}>
-                                                {selectedConversation.kind === "group"
-                                                    ? selectedConversation.groupName
-                                                    : employeeById[normalizeId(selectedConversation.partnerId)]?.displayName || selectedEmployee?.name || selectedConversation.partnerId}
-                                            </Text>
-                                            <Text style={styles.headerSubtitle}>
-                                                {selectedConversation.kind === "group"
-                                                    ? `${groupMembers.length} members`
-                                                    : selectedEmployee?.isOnline
+                                        {selectedConversation.kind === "direct" && selectedEmployee?.isOnline && (
+                                            <View style={styles.headerOnlineDot} />
+                                        )}
+                                    </View>
+
+                                    <View style={styles.chatHeaderTextBlock}>
+                                        <Text style={styles.chatHeaderName} numberOfLines={1}>
+                                            {selectedConversation.kind === "group"
+                                                ? getConversationLabel(selectedConversation)
+                                                : getEmployeeLabel(
+                                                    employeeById[normalizeId(selectedConversation.partnerId)] || selectedEmployee,
+                                                    selectedConversation.partnerId
+                                                )}
+                                        </Text>
+                                        <Text style={[
+                                            styles.chatHeaderSubtitle,
+                                            selectedConversation.kind === "direct" && selectedEmployee?.isOnline && styles.chatHeaderSubtitleOnline,
+                                        ]}>
+                                            {selectedConversation.kind === "group"
+                                                ? `${groupMembers.length} members`
+                                                : selectedEmployee?.isOnline
                                                     ? "Online"
                                                     : selectedEmployee?.department || "Direct message"}
-                                            </Text>
-                                        </View>
+                                        </Text>
                                     </View>
                                 </TouchableOpacity>
-                                <View style={styles.callButtons}>
-                                    <TouchableOpacity onPress={() => togglePin(selectedKey)} style={styles.callButton}>
+
+                                <View style={styles.chatHeaderActions}>
+                                    <TouchableOpacity
+                                        onPress={() => togglePin(selectedKey)}
+                                        style={styles.headerActionBtn}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    >
                                         {pinnedKeys.includes(selectedKey) ? (
-                                            <PinOff size={18} color="#64748b" />
+                                            <PinOff size={19} color="#059669" />
                                         ) : (
-                                            <Pin size={18} color="#64748b" />
+                                            <Pin size={19} color="#64748b" />
                                         )}
                                     </TouchableOpacity>
-                                    <TouchableOpacity onPress={clearCurrentChat} style={styles.callButton}>
-                                        <Trash2 size={18} color="#64748b" />
+                                    <TouchableOpacity
+                                        onPress={clearCurrentChat}
+                                        style={styles.headerActionBtn}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    >
+                                        <Trash2 size={19} color="#64748b" />
                                     </TouchableOpacity>
-                                    <TouchableOpacity onPress={() => startCall('audio')} style={styles.callButton}>
+                                    <TouchableOpacity
+                                        onPress={() => startCall('audio')}
+                                        style={styles.headerActionBtn}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    >
                                         <Phone size={20} color="#64748b" />
                                     </TouchableOpacity>
-                                    <TouchableOpacity onPress={() => startCall('video')} style={styles.callButton}>
+                                    <TouchableOpacity
+                                        onPress={() => startCall('video')}
+                                        style={styles.headerActionBtn}
+                                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                                    >
                                         <Video size={20} color="#64748b" />
                                     </TouchableOpacity>
                                 </View>
@@ -1621,59 +1758,69 @@ export default function ChatContent() {
                                 inverted={true}
                                 keyExtractor={(item, index) => item._id || `${item.senderId}-${index}`}
                                 style={styles.messagesList}
-                                contentContainerStyle={{ padding: 16, gap: 12 }}
+                                contentContainerStyle={styles.messagesContent}
+                                showsVerticalScrollIndicator={false}
                                 renderItem={({ item: message }) => {
                                     const isMyMessage = normalizeId(message.senderId) === normalizeId(currentUser?.empId);
                                     const reactions = reactionsByMessage[message._id || ""] || [];
 
                                     return (
-                                        <View style={[styles.messageWrapper, isMyMessage ? styles.messageWrapperRight : styles.messageWrapperLeft]}>
+                                        <View style={[
+                                            styles.messageRow,
+                                            isMyMessage ? styles.messageRowRight : styles.messageRowLeft,
+                                        ]}>
                                             {!isMyMessage && (
-                                                <View style={styles.messageBubbleAvatar}>
+                                                <View style={styles.messageSenderAvatar}>
                                                     {employeeById[message.senderId]?.photo ? (
-                                                        <Image source={{ uri: employeeById[message.senderId].photo }} style={styles.messageBubbleAvatarImage} />
+                                                        <Image
+                                                            source={{ uri: employeeById[message.senderId].photo }}
+                                                            style={styles.messageSenderAvatarImg}
+                                                        />
                                                     ) : (
-                                                        <Text style={styles.messageBubbleAvatarText}>
+                                                        <Text style={styles.messageSenderAvatarText}>
                                                             {(message.senderName || "?").charAt(0).toUpperCase()}
                                                         </Text>
                                                     )}
                                                 </View>
                                             )}
+
                                             <TouchableOpacity
                                                 onLongPress={() => {
-                                                    if (isMyMessage) {
-                                                        handleEditMessage(message);
-                                                    } else {
-                                                        setReplyTo(message);
-                                                    }
+                                                    if (isMyMessage) handleEditMessage(message);
+                                                    else setReplyTo(message);
                                                 }}
-                                                style={[styles.messageBubble, isMyMessage ? styles.messageBubbleRight : styles.messageBubbleLeft]}
+                                                activeOpacity={0.85}
+                                                style={[
+                                                    styles.messageBubble,
+                                                    isMyMessage ? styles.messageBubbleRight : styles.messageBubbleLeft,
+                                                ]}
                                             >
-                                                {!isMyMessage && (
-                                                    <Text style={styles.senderName}>{message.senderName}</Text>
+                                                {!isMyMessage && selectedConversation?.kind === "group" && (
+                                                    <Text style={styles.bubbleSenderName}>{message.senderName}</Text>
                                                 )}
+
                                                 {message.replyTo && (
-                                                    <View style={[styles.replyPreview, { marginHorizontal: 0, marginTop: 0, marginBottom: 8 }]}>
-                                                        <View style={styles.replyPreviewContent}>
-                                                            <Text style={styles.replyPreviewName}>{message.replyTo.senderName}</Text>
-                                                            <Text style={styles.replyPreviewText} numberOfLines={1}>{message.replyTo.content}</Text>
-                                                        </View>
+                                                    <View style={[styles.bubbleReplyPreview, isMyMessage && styles.bubbleReplyPreviewRight]}>
+                                                        <Text style={styles.bubbleReplyName}>{message.replyTo.senderName}</Text>
+                                                        <Text style={styles.bubbleReplyText} numberOfLines={1}>{message.replyTo.content}</Text>
                                                     </View>
                                                 )}
+
                                                 {editingMessageId === message._id ? (
                                                     <View>
                                                         <TextInput
-                                                            style={styles.messageInput}
+                                                            style={styles.editInput}
                                                             value={editingText}
                                                             onChangeText={setEditingText}
                                                             autoFocus
+                                                            multiline
                                                         />
-                                                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8, gap: 8 }}>
-                                                            <TouchableOpacity onPress={() => setEditingMessageId("")}>
-                                                                <Text style={{ color: '#ef4444' }}>Cancel</Text>
+                                                        <View style={styles.editActions}>
+                                                            <TouchableOpacity onPress={() => setEditingMessageId("")} style={styles.editCancelBtn}>
+                                                                <Text style={styles.editCancelText}>Cancel</Text>
                                                             </TouchableOpacity>
-                                                            <TouchableOpacity onPress={saveEditedMessage}>
-                                                                <Text style={{ color: '#059669', fontWeight: 'bold' }}>Save</Text>
+                                                            <TouchableOpacity onPress={saveEditedMessage} style={styles.editSaveBtn}>
+                                                                <Text style={styles.editSaveText}>Save</Text>
                                                             </TouchableOpacity>
                                                         </View>
                                                     </View>
@@ -1682,8 +1829,8 @@ export default function ChatContent() {
                                                         {message.attachments && message.attachments.length > 0 && (
                                                             <View style={styles.attachmentsContainer}>
                                                                 {message.attachments.map((att, idx) => (
-                                                                    <TouchableOpacity 
-                                                                        key={`${message._id}-att-${idx}`} 
+                                                                    <TouchableOpacity
+                                                                        key={`${message._id}-att-${idx}`}
                                                                         onPress={() => Linking.openURL(att.url)}
                                                                         style={styles.attachmentItem}
                                                                     >
@@ -1699,15 +1846,23 @@ export default function ChatContent() {
                                                                 ))}
                                                             </View>
                                                         )}
-                                                        <Text style={[styles.messageContent, isMyMessage && { color: "#064e3b" }]} selectable>{message.content}</Text>
+
+                                                        {!!message.content && (
+                                                            <Text
+                                                                style={[styles.messageText, isMyMessage && styles.messageTextRight]}
+                                                                selectable
+                                                            >
+                                                                {message.content}
+                                                            </Text>
+                                                        )}
                                                     </View>
                                                 )}
-                                                
+
                                                 {reactions.length > 0 && (
                                                     <View style={styles.reactionsContainer}>
                                                         {Array.from(new Set(reactions)).map((emoji, idx) => (
                                                             <TouchableOpacity
-                                                                key={`${message._id}-reaction-${idx}`}
+                                                                key={`${message._id}-r-${idx}`}
                                                                 style={styles.reactionBadge}
                                                                 onPress={() => toggleReaction(message._id || "", emoji)}
                                                             >
@@ -1717,49 +1872,50 @@ export default function ChatContent() {
                                                     </View>
                                                 )}
 
-                                                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4, gap: 8 }}>
-                                                    <Text style={{ fontSize: 10, color: '#64748b' }}>
+                                                <View style={[styles.messageMeta, isMyMessage && styles.messageMetaRight]}>
+                                                    <Text style={styles.messageTime}>
                                                         {formatTime(message.createdAt)}
-                                                        {message.editedAt && " (edited)"}
+                                                        {message.editedAt ? " · edited" : ""}
                                                     </Text>
-                                                    {isMyMessage && (
-                                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                                            {(() => {
-                                                                const isDirect = selectedConversation?.kind === 'direct';
-                                                                const partnerId = selectedConversation?.kind === 'direct' ? selectedConversation.partnerId : null;
-                                                                
-                                                                if (isDirect && partnerId) {
-                                                                    if ((message.seenBy || []).includes(partnerId)) {
-                                                                        return <CheckCheck size={14} color="#3b82f6" />;
-                                                                    }
-                                                                    if ((message.deliveredTo || []).includes(partnerId)) {
-                                                                        return <CheckCheck size={14} color="#94a3b8" />;
-                                                                    }
-                                                                    return <Check size={14} color="#94a3b8" />;
-                                                                } else if (selectedConversation?.kind === 'group') {
-                                                                    const recipientIds = selectedConversation.memberIds.filter(id => normalizeId(id) !== normalizeId(currentUser?.empId));
-                                                                    if (recipientIds.length === 0) return <Check size={14} color="#94a3b8" />;
-                                                                    
-                                                                    const seenCount = recipientIds.filter(id => (message.seenBy || []).includes(id)).length;
-                                                                    if (seenCount === recipientIds.length) return <CheckCheck size={14} color="#3b82f6" />;
-                                                                    
-                                                                    const deliveredCount = recipientIds.filter(id => (message.deliveredTo || []).includes(id)).length;
-                                                                    if (deliveredCount > 0) return <CheckCheck size={14} color="#94a3b8" />;
-                                                                    
-                                                                    return <Check size={14} color="#94a3b8" />;
-                                                                }
-                                                                return <Clock size={14} color="#94a3b8" />;
-                                                            })()}
-                                                        </View>
-                                                    )}
-                                                    {isMyMessage && (
-                                                        <TouchableOpacity onPress={() => deleteMessage(message._id || "")}>
-                                                            <Trash2 size={12} color="#94a3b8" />
+
+                                                    {isMyMessage && (() => {
+                                                        const isDirect = selectedConversation?.kind === 'direct';
+                                                        const partnerId = selectedConversation?.kind === 'direct' ? selectedConversation.partnerId : null;
+
+                                                        if (isDirect && partnerId) {
+                                                            if ((message.seenBy || []).includes(partnerId))
+                                                                return <CheckCheck size={13} color="#3b82f6" style={{ marginLeft: 4 }} />;
+                                                            if ((message.deliveredTo || []).includes(partnerId))
+                                                                return <CheckCheck size={13} color="#94a3b8" style={{ marginLeft: 4 }} />;
+                                                            return <Check size={13} color="#94a3b8" style={{ marginLeft: 4 }} />;
+                                                        } else if (selectedConversation?.kind === 'group') {
+                                                            const recipientIds = selectedConversation.memberIds.filter(id => normalizeId(id) !== normalizeId(currentUser?.empId));
+                                                            if (recipientIds.length === 0) return <Check size={13} color="#94a3b8" style={{ marginLeft: 4 }} />;
+                                                            const seenCount = recipientIds.filter(id => (message.seenBy || []).includes(id)).length;
+                                                            if (seenCount === recipientIds.length) return <CheckCheck size={13} color="#3b82f6" style={{ marginLeft: 4 }} />;
+                                                            const deliveredCount = recipientIds.filter(id => (message.deliveredTo || []).includes(id)).length;
+                                                            if (deliveredCount > 0) return <CheckCheck size={13} color="#94a3b8" style={{ marginLeft: 4 }} />;
+                                                            return <Check size={13} color="#94a3b8" style={{ marginLeft: 4 }} />;
+                                                        }
+                                                        return <Clock size={13} color="#94a3b8" style={{ marginLeft: 4 }} />;
+                                                    })()}
+
+                                                    <View style={styles.messageActions}>
+                                                        {isMyMessage && (
+                                                            <TouchableOpacity
+                                                                onPress={() => deleteMessage(message._id || "")}
+                                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                            >
+                                                                <Trash2 size={13} color="#94a3b8" />
+                                                            </TouchableOpacity>
+                                                        )}
+                                                        <TouchableOpacity
+                                                            onPress={() => handleForwardMessage(message)}
+                                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                        >
+                                                            <Forward size={13} color="#94a3b8" />
                                                         </TouchableOpacity>
-                                                    )}
-                                                    <TouchableOpacity onPress={() => handleForwardMessage(message)}>
-                                                        <Forward size={12} color="#94a3b8" />
-                                                    </TouchableOpacity>
+                                                    </View>
                                                 </View>
                                             </TouchableOpacity>
                                         </View>
@@ -1772,6 +1928,7 @@ export default function ChatContent() {
                                     <FlatList
                                         data={mentionResults}
                                         keyExtractor={(item) => item.empId || ""}
+                                        keyboardShouldPersistTaps="handled"
                                         renderItem={({ item }) => (
                                             <TouchableOpacity
                                                 style={styles.mentionItem}
@@ -1782,11 +1939,16 @@ export default function ChatContent() {
                                                         <Image source={{ uri: item.photo }} style={styles.avatarImage} />
                                                     ) : (
                                                         <Text style={styles.mentionAvatarText}>
-                                                            {(item.displayName || item.name || "U").charAt(0).toUpperCase()}
+                                                            {getEmployeeLabel(item, "U").charAt(0).toUpperCase()}
                                                         </Text>
                                                     )}
                                                 </View>
-                                                <Text style={styles.mentionName}>{item.displayName || item.name}</Text>
+                                                <View>
+                                                    <Text style={styles.mentionName}>{getEmployeeLabel(item)}</Text>
+                                                    {item.department && (
+                                                        <Text style={styles.mentionDept}>{item.department}</Text>
+                                                    )}
+                                                </View>
                                             </TouchableOpacity>
                                         )}
                                         ListEmptyComponent={() => (
@@ -1801,15 +1963,19 @@ export default function ChatContent() {
                             )}
 
                             {replyTo && (
-                                <View style={styles.replyPreview}>
-                                    <View style={styles.replyPreviewContent}>
-                                        <Text style={styles.replyPreviewName}>{replyTo.senderName}</Text>
-                                        <Text style={styles.replyPreviewText} numberOfLines={1}>
+                                <View style={styles.replyBar}>
+                                    <View style={styles.replyBarLeft} />
+                                    <View style={styles.replyBarContent}>
+                                        <Text style={styles.replyBarName}>{replyTo.senderName}</Text>
+                                        <Text style={styles.replyBarText} numberOfLines={1}>
                                             {replyTo.content || "Attachment"}
                                         </Text>
                                     </View>
-                                    <TouchableOpacity onPress={() => setReplyTo(null)}>
-                                        <X size={16} color="#64748b" />
+                                    <TouchableOpacity
+                                        onPress={() => setReplyTo(null)}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <X size={18} color="#64748b" />
                                     </TouchableOpacity>
                                 </View>
                             )}
@@ -1819,14 +1985,16 @@ export default function ChatContent() {
                                     <FlatList
                                         data={pendingFiles}
                                         horizontal
+                                        showsHorizontalScrollIndicator={false}
                                         keyExtractor={(_, index) => `pending-${index}`}
                                         renderItem={({ item, index }) => (
                                             <View style={styles.pendingFileBadge}>
+                                                <Paperclip size={12} color="#475569" />
                                                 <Text style={styles.pendingFileText} numberOfLines={1}>
                                                     {item.name}
                                                 </Text>
                                                 <TouchableOpacity onPress={() => removePendingFile(index)}>
-                                                    <X size={14} color="#dc2626" />
+                                                    <X size={13} color="#dc2626" />
                                                 </TouchableOpacity>
                                             </View>
                                         )}
@@ -1835,31 +2003,43 @@ export default function ChatContent() {
                                 </View>
                             )}
 
-                            <View style={styles.inputContainer}>
-                                <TouchableOpacity style={styles.attachButton} onPress={handleSelectFiles} disabled={isSending || !canCurrentUserSend}>
-                                    <Paperclip size={20} color="#64748b" />
+                            <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+                                <TouchableOpacity
+                                    style={styles.attachBtn}
+                                    onPress={handleSelectFiles}
+                                    disabled={isSending || !canCurrentUserSend}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                    <Paperclip size={21} color={canCurrentUserSend ? "#64748b" : "#cbd5e1"} />
                                 </TouchableOpacity>
+
                                 <TextInput
                                     ref={messageInputRef}
                                     style={styles.messageInput}
                                     placeholder={
                                         selectedConversation?.kind === "group" &&
-                                        selectedConversation.adminOnlyMessaging &&
-                                        !canCurrentUserSend
+                                            selectedConversation.adminOnlyMessaging &&
+                                            !canCurrentUserSend
                                             ? "Only admins can send messages"
                                             : "Type a message..."
                                     }
+                                    placeholderTextColor="#94a3b8"
                                     value={text}
                                     onChangeText={handleChatTextChange}
                                     multiline
                                     editable={canCurrentUserSend && !isSending}
                                 />
+
                                 <TouchableOpacity
-                                    style={[styles.sendButton, (!text.trim() && pendingFiles.length === 0 || isSending) && styles.sendButtonDisabled]}
+                                    style={[
+                                        styles.sendBtn,
+                                        ((!text.trim() && pendingFiles.length === 0) || isSending || !canCurrentUserSend) && styles.sendBtnDisabled,
+                                    ]}
                                     onPress={sendMessage}
                                     disabled={(!text.trim() && pendingFiles.length === 0) || isSending || !canCurrentUserSend}
+                                    activeOpacity={0.8}
                                 >
-                                    <Text style={styles.sendButtonText}>{isSending ? "..." : "Send"}</Text>
+                                    <Text style={styles.sendBtnText}>{isSending ? "..." : "Send"}</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -1875,30 +2055,23 @@ export default function ChatContent() {
                                     <X size={20} color="#64748b" />
                                 </TouchableOpacity>
                             </View>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 style={[styles.primaryModalButton, { backgroundColor: '#f1f5f9', marginTop: 0 }]}
-                                onPress={() => {
-                                    if (contextMenu) togglePin(contextMenu.key);
-                                    setContextMenu(null);
-                                }}
+                                onPress={() => { if (contextMenu) togglePin(contextMenu.key); setContextMenu(null); }}
                             >
-                                <Text style={[styles.primaryModalButtonText, { color: '#0f172a' }]}>{contextMenu?.isPinned ? "Unpin Chat" : "Pin Chat"}</Text>
+                                <Text style={[styles.primaryModalButtonText, { color: '#0f172a' }]}>
+                                    {contextMenu?.isPinned ? "Unpin Chat" : "Pin Chat"}
+                                </Text>
                             </TouchableOpacity>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 style={[styles.primaryModalButton, { backgroundColor: '#f1f5f9' }]}
-                                onPress={() => {
-                                    if (contextMenu) clearConversationByKey(contextMenu.key);
-                                    setContextMenu(null);
-                                }}
+                                onPress={() => { if (contextMenu) clearConversationByKey(contextMenu.key); setContextMenu(null); }}
                             >
                                 <Text style={[styles.primaryModalButtonText, { color: '#0f172a' }]}>Clear Chat</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 style={[styles.primaryModalButton, { backgroundColor: '#fee2e2', marginBottom: 0 }]}
-                                onPress={() => {
-                                    if (contextMenu) deleteConversation(contextMenu.key);
-                                    setContextMenu(null);
-                                }}
+                                onPress={() => { if (contextMenu) deleteConversation(contextMenu.key); setContextMenu(null); }}
                             >
                                 <Text style={[styles.primaryModalButtonText, { color: '#dc2626' }]}>Hide Chat</Text>
                             </TouchableOpacity>
@@ -1915,32 +2088,27 @@ export default function ChatContent() {
                                     <X size={20} color="#64748b" />
                                 </TouchableOpacity>
                             </View>
-
                             {selectedEmployee && (
-                                <ScrollView style={styles.modalScroll}>
+                                <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
                                     <View style={styles.profileHeader}>
                                         {selectedEmployee.photo ? (
                                             <Image source={{ uri: selectedEmployee.photo }} style={styles.profileAvatar} />
                                         ) : (
                                             <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
                                                 <Text style={styles.profileAvatarText}>
-                                                    {(selectedEmployee.displayName || selectedEmployee.name || "U").charAt(0).toUpperCase()}
+                                                    {getEmployeeLabel(selectedEmployee, "U").charAt(0).toUpperCase()}
                                                 </Text>
                                             </View>
                                         )}
-                                        <Text style={styles.profileName}>{selectedEmployee.displayName || selectedEmployee.name}</Text>
+                                        <Text style={styles.profileName}>{getEmployeeLabel(selectedEmployee)}</Text>
                                         <Text style={styles.profileDept}>{selectedEmployee.department || "No Department"}</Text>
                                     </View>
-
                                     <View style={styles.profileSection}>
                                         <View style={styles.profileRow}>
                                             <Text style={styles.profileLabel}>Name</Text>
                                             <View style={styles.profileValueRow}>
-                                                <Text style={styles.profileValue}>{selectedEmployee.displayName || selectedEmployee.name || "-"}</Text>
-                                                <TouchableOpacity
-                                                    onPress={() => handleCopy(selectedEmployee.displayName || selectedEmployee.name || "-", "Name")}
-                                                    style={styles.copyButton}
-                                                >
+                                                <Text style={styles.profileValue}>{getEmployeeLabel(selectedEmployee, "-")}</Text>
+                                                <TouchableOpacity onPress={() => handleCopy(getEmployeeLabel(selectedEmployee, "-"), "Name")} style={styles.copyButton}>
                                                     <Copy size={16} color="#64748b" />
                                                 </TouchableOpacity>
                                             </View>
@@ -1949,10 +2117,7 @@ export default function ChatContent() {
                                             <Text style={styles.profileLabel}>Email</Text>
                                             <View style={styles.profileValueRow}>
                                                 <Text style={styles.profileValue}>{selectedEmployee.mailId || selectedEmployee.email || "-"}</Text>
-                                                <TouchableOpacity
-                                                    onPress={() => handleCopy(selectedEmployee.mailId || selectedEmployee.email || "-", "Email")}
-                                                    style={styles.copyButton}
-                                                >
+                                                <TouchableOpacity onPress={() => handleCopy(selectedEmployee.mailId || selectedEmployee.email || "-", "Email")} style={styles.copyButton}>
                                                     <Copy size={16} color="#64748b" />
                                                 </TouchableOpacity>
                                             </View>
@@ -1961,46 +2126,21 @@ export default function ChatContent() {
                                             <Text style={styles.profileLabel}>Phone</Text>
                                             <View style={styles.profileValueRow}>
                                                 <Text style={styles.profileValue}>{selectedEmployee.phoneNumber || "-"}</Text>
-                                                <TouchableOpacity
-                                                    onPress={() => handleCopy(selectedEmployee.phoneNumber || "-", "Phone")}
-                                                    style={styles.copyButton}
-                                                >
+                                                <TouchableOpacity onPress={() => handleCopy(selectedEmployee.phoneNumber || "-", "Phone")} style={styles.copyButton}>
                                                     <Copy size={16} color="#64748b" />
                                                 </TouchableOpacity>
                                             </View>
                                         </View>
                                     </View>
-
                                     <View style={styles.profileSection}>
-                                        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', marginBottom: 12 }}>
-                                            {["media", "links", "docs"].map((tab) => (
-                                                <TouchableOpacity
-                                                    key={tab}
-                                                    onPress={() => setProfileTab(tab as any)}
-                                                    style={{
-                                                        paddingVertical: 10,
-                                                        paddingHorizontal: 16,
-                                                        borderBottomWidth: profileTab === tab ? 2 : 0,
-                                                        borderBottomColor: '#059669'
-                                                    }}
-                                                >
-                                                    <Text style={{
-                                                        fontSize: 14,
-                                                        fontWeight: '600',
-                                                        color: profileTab === tab ? '#059669' : '#64748b',
-                                                        textTransform: 'capitalize'
-                                                    }}>{tab}</Text>
+                                        <View style={styles.tabRow}>
+                                            {(["media", "links", "docs"] as const).map((tab) => (
+                                                <TouchableOpacity key={tab} onPress={() => setProfileTab(tab)} style={[styles.tabItem, profileTab === tab && styles.tabItemActive]}>
+                                                    <Text style={[styles.tabItemText, profileTab === tab && styles.tabItemTextActive]}>{tab}</Text>
                                                 </TouchableOpacity>
                                             ))}
                                         </View>
-
-                                        {profileTab === "media" && (
-                                            renderSharedTabContent()
-                                        )}
-
-                                        {profileTab === "links" && renderSharedTabContent()}
-
-                                        {profileTab === "docs" && renderSharedTabContent()}
+                                        {renderSharedTabContent()}
                                     </View>
                                 </ScrollView>
                             )}
@@ -2017,9 +2157,8 @@ export default function ChatContent() {
                                     <X size={20} color="#64748b" />
                                 </TouchableOpacity>
                             </View>
-
                             {selectedGroup && (
-                                <ScrollView style={styles.modalScroll}>
+                                <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
                                     <View style={styles.profileHeader}>
                                         <View style={[styles.profileAvatar, styles.profileAvatarFallback]}>
                                             <Users size={40} color="#475569" />
@@ -2027,36 +2166,25 @@ export default function ChatContent() {
                                         <Text style={styles.profileName}>{selectedGroup.groupName}</Text>
                                         <Text style={styles.profileDept}>{groupMembers.length} Members</Text>
                                     </View>
-
                                     <View style={styles.profileSection}>
                                         <Text style={styles.profileSectionTitle}>Members</Text>
                                         {groupMembers.map((m) => (
                                             <View key={m.empId} style={styles.groupMemberRow}>
-                                                <TouchableOpacity
-                                                    style={styles.groupMemberIdentity}
-                                                    onPress={() => setSelectedGroupMemberProfile(m.employee)}
-                                                >
+                                                <TouchableOpacity style={styles.groupMemberIdentity} onPress={() => setSelectedGroupMemberProfile(m.employee)}>
                                                     <View style={styles.conversationAvatar}>
                                                         {m.employee?.photo ? (
                                                             <Image source={{ uri: m.employee.photo }} style={styles.avatarImage} />
                                                         ) : (
-                                                            <Text style={styles.conversationAvatarText}>
-                                                                {(m.employee?.displayName || m.employee?.name || m.empId).charAt(0).toUpperCase()}
-                                                            </Text>
+                                                            <Text style={styles.conversationAvatarText}>{getEmployeeLabel(m.employee, m.empId).charAt(0).toUpperCase()}</Text>
                                                         )}
                                                     </View>
-                                                    <View style={styles.conversationInfo}>
-                                                        <Text style={styles.conversationName}>{m.employee?.displayName || m.employee?.name || m.empId}</Text>
-                                                        <Text style={styles.groupMemberMeta}>
-                                                            {m.empId} {m.isAdmin ? "• Admin" : ""}
-                                                        </Text>
+                                                    <View style={styles.conversationContent}>
+                                                        <Text style={styles.conversationName}>{getEmployeeLabel(m.employee, m.empId)}</Text>
+                                                        <Text style={styles.groupMemberMeta}>{m.empId} {m.isAdmin ? "• Admin" : ""}</Text>
                                                     </View>
                                                 </TouchableOpacity>
                                                 <View style={styles.groupMemberActions}>
-                                                    <TouchableOpacity
-                                                        onPress={() => startDirectChat(m.empId)}
-                                                        style={styles.groupMemberActionBtn}
-                                                    >
+                                                    <TouchableOpacity onPress={() => startDirectChat(m.empId)} style={styles.groupMemberActionBtn}>
                                                         <Text style={styles.groupMemberActionText}>Message</Text>
                                                     </TouchableOpacity>
                                                     {isSelectedGroupAdmin && normalizeId(m.empId) !== normalizeId(currentUser?.empId) && (
@@ -2073,10 +2201,7 @@ export default function ChatContent() {
                                                             >
                                                                 <Text style={styles.groupAdminActionText}>{m.isAdmin ? "Remove admin" : "Make admin"}</Text>
                                                             </TouchableOpacity>
-                                                            <TouchableOpacity
-                                                                onPress={() => runGroupAction({ action: "remove-member", targetId: m.empId })}
-                                                                style={styles.groupRemoveActionBtn}
-                                                            >
+                                                            <TouchableOpacity onPress={() => runGroupAction({ action: "remove-member", targetId: m.empId })} style={styles.groupRemoveActionBtn}>
                                                                 <Text style={styles.groupRemoveActionText}>Remove</Text>
                                                             </TouchableOpacity>
                                                         </>
@@ -2085,89 +2210,52 @@ export default function ChatContent() {
                                             </View>
                                         ))}
                                     </View>
-
                                     {isSelectedGroupAdmin && (
                                         <View style={styles.profileSection}>
                                             <Text style={styles.profileSectionTitle}>Admin Controls</Text>
                                             <TouchableOpacity
                                                 disabled={groupActionBusy}
-                                                onPress={() =>
-                                                    runGroupAction({
-                                                        action: "update-settings",
-                                                        adminOnlyMessaging: !selectedGroup.adminOnlyMessaging,
-                                                    })
-                                                }
+                                                onPress={() => runGroupAction({ action: "update-settings", adminOnlyMessaging: !selectedGroup.adminOnlyMessaging })}
                                                 style={styles.adminControlRow}
                                             >
                                                 <View style={styles.adminControlLeft}>
                                                     <Shield size={16} color="#a16207" />
                                                     <Text style={styles.adminControlLabel}>Admin-only messaging</Text>
                                                 </View>
-                                                <Text style={styles.adminControlValue}>
-                                                    {selectedGroup.adminOnlyMessaging ? "On" : "Off"}
-                                                </Text>
+                                                <Text style={styles.adminControlValue}>{selectedGroup.adminOnlyMessaging ? "On" : "Off"}</Text>
                                             </TouchableOpacity>
-
                                             <View style={styles.addMemberRow}>
                                                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                                                     {addableEmployees.map((employee) => {
                                                         const empId = String(employee.empId || "");
                                                         const active = addMemberEmpId === empId;
                                                         return (
-                                                            <TouchableOpacity
-                                                                key={empId}
-                                                                onPress={() => setAddMemberEmpId(empId)}
-                                                                style={[styles.memberPickerChip, active && styles.memberPickerChipActive]}
-                                                            >
-                                                                <Text style={[styles.memberPickerChipText, active && styles.memberPickerChipTextActive]}>
-                                                                    {employee.displayName || employee.name}
-                                                                </Text>
+                                                            <TouchableOpacity key={empId} onPress={() => setAddMemberEmpId(empId)} style={[styles.memberPickerChip, active && styles.memberPickerChipActive]}>
+                                                                <Text style={[styles.memberPickerChipText, active && styles.memberPickerChipTextActive]}>{getEmployeeLabel(employee)}</Text>
                                                             </TouchableOpacity>
                                                         );
                                                     })}
                                                 </ScrollView>
                                                 <TouchableOpacity
                                                     disabled={!addMemberEmpId || groupActionBusy}
-                                                    onPress={async () => {
-                                                        await runGroupAction({ action: "add-members", memberIds: [addMemberEmpId] });
-                                                        setAddMemberEmpId("");
-                                                    }}
-                                                    style={[styles.addMemberButton, (!addMemberEmpId || groupActionBusy) && styles.sendButtonDisabled]}
+                                                    onPress={async () => { await runGroupAction({ action: "add-members", memberIds: [addMemberEmpId] }); setAddMemberEmpId(""); }}
+                                                    style={[styles.addMemberButton, (!addMemberEmpId || groupActionBusy) && styles.sendBtnDisabled]}
                                                 >
                                                     <Text style={styles.addMemberButtonText}>Add member</Text>
                                                 </TouchableOpacity>
                                             </View>
                                         </View>
                                     )}
-
                                     <View style={styles.profileSection}>
-                                        <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', marginBottom: 12 }}>
-                                            {["media", "links", "docs"].map((tab) => (
-                                                <TouchableOpacity
-                                                    key={tab}
-                                                    onPress={() => setProfileTab(tab as any)}
-                                                    style={{
-                                                        paddingVertical: 10,
-                                                        paddingHorizontal: 16,
-                                                        borderBottomWidth: profileTab === tab ? 2 : 0,
-                                                        borderBottomColor: '#059669'
-                                                    }}
-                                                >
-                                                    <Text style={{
-                                                        fontSize: 14,
-                                                        fontWeight: '600',
-                                                        color: profileTab === tab ? '#059669' : '#64748b',
-                                                        textTransform: 'capitalize'
-                                                    }}>{tab}</Text>
+                                        <View style={styles.tabRow}>
+                                            {(["media", "links", "docs"] as const).map((tab) => (
+                                                <TouchableOpacity key={tab} onPress={() => setProfileTab(tab)} style={[styles.tabItem, profileTab === tab && styles.tabItemActive]}>
+                                                    <Text style={[styles.tabItemText, profileTab === tab && styles.tabItemTextActive]}>{tab}</Text>
                                                 </TouchableOpacity>
                                             ))}
                                         </View>
-
-                                        {profileTab === "media" && renderSharedTabContent()}
-                                        {profileTab === "links" && renderSharedTabContent()}
-                                        {profileTab === "docs" && renderSharedTabContent()}
+                                        {renderSharedTabContent()}
                                     </View>
-
                                     {selectedGroupMemberProfile && (
                                         <View style={styles.profileSection}>
                                             <View style={styles.modalHeader}>
@@ -2176,18 +2264,10 @@ export default function ChatContent() {
                                                     <X size={18} color="#64748b" />
                                                 </TouchableOpacity>
                                             </View>
-                                            <Text style={styles.profileValue}>
-                                                {selectedGroupMemberProfile.displayName || selectedGroupMemberProfile.name || "-"}
-                                            </Text>
-                                            <Text style={styles.groupMemberProfileText}>
-                                                {selectedGroupMemberProfile.mailId || selectedGroupMemberProfile.email || "-"}
-                                            </Text>
-                                            <Text style={styles.groupMemberProfileText}>
-                                                {selectedGroupMemberProfile.phoneNumber || "-"}
-                                            </Text>
-                                            <Text style={styles.groupMemberProfileText}>
-                                                {selectedGroupMemberProfile.role || selectedGroupMemberProfile.department || "-"}
-                                            </Text>
+                                            <Text style={styles.profileValue}>{getEmployeeLabel(selectedGroupMemberProfile, "-")}</Text>
+                                            <Text style={styles.groupMemberProfileText}>{selectedGroupMemberProfile.mailId || selectedGroupMemberProfile.email || "-"}</Text>
+                                            <Text style={styles.groupMemberProfileText}>{selectedGroupMemberProfile.phoneNumber || "-"}</Text>
+                                            <Text style={styles.groupMemberProfileText}>{selectedGroupMemberProfile.role || selectedGroupMemberProfile.department || "-"}</Text>
                                         </View>
                                     )}
                                 </ScrollView>
@@ -2201,39 +2281,24 @@ export default function ChatContent() {
                         <View style={styles.modalContent}>
                             <View style={styles.modalHeader}>
                                 <Text style={styles.modalTitle}>Create Group</Text>
-                                <TouchableOpacity
-                                    onPress={() => {
-                                        setIsCreateGroupOpen(false);
-                                        setNewGroupName("");
-                                        setNewGroupMemberIds([]);
-                                        setNewGroupAdminOnlyMessaging(false);
-                                    }}
-                                >
+                                <TouchableOpacity onPress={() => { setIsCreateGroupOpen(false); setNewGroupName(""); setNewGroupMemberIds([]); setNewGroupAdminOnlyMessaging(false); }}>
                                     <X size={20} color="#64748b" />
                                 </TouchableOpacity>
                             </View>
-
-                            <ScrollView style={styles.modalScroll}>
+                            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
                                 <TextInput
                                     style={styles.groupNameInput}
                                     placeholder="Group name"
                                     value={newGroupName}
                                     onChangeText={setNewGroupName}
                                 />
-
-                                <TouchableOpacity
-                                    onPress={() => setNewGroupAdminOnlyMessaging((prev) => !prev)}
-                                    style={styles.adminControlRow}
-                                >
+                                <TouchableOpacity onPress={() => setNewGroupAdminOnlyMessaging((prev) => !prev)} style={styles.adminControlRow}>
                                     <View style={styles.adminControlLeft}>
                                         <Shield size={16} color="#a16207" />
                                         <Text style={styles.adminControlLabel}>Restrict messaging to admins</Text>
                                     </View>
-                                    <Text style={styles.adminControlValue}>
-                                        {newGroupAdminOnlyMessaging ? "On" : "Off"}
-                                    </Text>
+                                    <Text style={styles.adminControlValue}>{newGroupAdminOnlyMessaging ? "On" : "Off"}</Text>
                                 </TouchableOpacity>
-
                                 <Text style={styles.profileSectionTitle}>Choose members</Text>
                                 <View style={styles.memberSelectorList}>
                                     {employees.map((employee) => {
@@ -2243,11 +2308,7 @@ export default function ChatContent() {
                                         return (
                                             <TouchableOpacity
                                                 key={empId}
-                                                onPress={() =>
-                                                    setNewGroupMemberIds((prev) =>
-                                                        selected ? prev.filter((id) => id !== empId) : [...prev, empId]
-                                                    )
-                                                }
+                                                onPress={() => setNewGroupMemberIds((prev) => selected ? prev.filter((id) => id !== empId) : [...prev, empId])}
                                                 style={[styles.memberSelectRow, selected && styles.memberSelectRowActive]}
                                             >
                                                 <View style={styles.memberSelectIdentity}>
@@ -2255,22 +2316,19 @@ export default function ChatContent() {
                                                         {employee.photo ? (
                                                             <Image source={{ uri: employee.photo }} style={styles.avatarImage} />
                                                         ) : (
-                                                            <Text style={styles.conversationAvatarText}>
-                                                                {(employee.displayName || employee.name || "U").charAt(0).toUpperCase()}
-                                                            </Text>
+                                                            <Text style={styles.conversationAvatarText}>{getEmployeeLabel(employee, "U").charAt(0).toUpperCase()}</Text>
                                                         )}
                                                     </View>
-                                                    <View style={styles.conversationInfo}>
-                                                        <Text style={styles.conversationName}>{employee.displayName || employee.name}</Text>
+                                                    <View style={styles.conversationContent}>
+                                                        <Text style={styles.conversationName}>{getEmployeeLabel(employee)}</Text>
                                                         <Text style={styles.groupMemberMeta}>{empId}</Text>
                                                     </View>
                                                 </View>
-                                                <Text style={styles.memberSelectIndicator}>{selected ? "Selected" : "Select"}</Text>
+                                                <Text style={styles.memberSelectIndicator}>{selected ? "✓ Selected" : "Select"}</Text>
                                             </TouchableOpacity>
                                         );
                                     })}
                                 </View>
-
                                 <TouchableOpacity onPress={handleCreateGroup} style={styles.primaryModalButton}>
                                     <Text style={styles.primaryModalButtonText}>Create group</Text>
                                 </TouchableOpacity>
@@ -2288,99 +2346,52 @@ export default function ChatContent() {
                                     <X size={20} color="#64748b" />
                                 </TouchableOpacity>
                             </View>
-                            <TextInput
-                                style={styles.searchInput}
-                                placeholder="Search employees..."
-                                value={forwardSearch}
-                                onChangeText={setForwardSearch}
-                            />
+                            <View style={styles.searchInputWrapper}>
+                                <Search size={15} color="#94a3b8" style={styles.searchIcon} />
+                                <TextInput
+                                    style={styles.searchInput}
+                                    placeholder="Search employees..."
+                                    placeholderTextColor="#94a3b8"
+                                    value={forwardSearch}
+                                    onChangeText={setForwardSearch}
+                                />
+                            </View>
                             <FlatList
                                 data={employees.filter((employee) => {
                                     if (normalizeId(employee.empId) === normalizeId(currentUser?.empId)) return false;
                                     const query = forwardSearch.trim().toLowerCase();
                                     if (!query) return true;
-                                    const name = String(employee.displayName || employee.name || "").toLowerCase();
+                                    const name = getEmployeeLabel(employee).toLowerCase();
                                     const empId = String(employee.empId || "").toLowerCase();
                                     return name.includes(query) || empId.includes(query);
                                 })}
                                 keyExtractor={(item) => item.empId || ""}
                                 style={styles.forwardList}
+                                showsVerticalScrollIndicator={false}
                                 renderItem={({ item }) => (
-                                    <TouchableOpacity
-                                        style={styles.conversationItem}
-                                        onPress={() => forwardToEmployee(item)}
-                                    >
+                                    <TouchableOpacity style={styles.conversationItem} onPress={() => forwardToEmployee(item)}>
                                         <View style={styles.conversationAvatar}>
                                             {item.photo ? (
                                                 <Image source={{ uri: item.photo }} style={styles.avatarImage} />
                                             ) : (
-                                                <Text style={styles.conversationAvatarText}>
-                                                    {(item.displayName || item.name || "U").charAt(0).toUpperCase()}
-                                                </Text>
+                                                <Text style={styles.conversationAvatarText}>{getEmployeeLabel(item, "U").charAt(0).toUpperCase()}</Text>
                                             )}
                                         </View>
-                                        <Text style={styles.conversationName}>{item.displayName || item.name}</Text>
+                                        <Text style={styles.conversationName}>{getEmployeeLabel(item)}</Text>
                                     </TouchableOpacity>
                                 )}
                             />
                         </View>
                     </View>
                 </Modal>
-                {!selectedKey && (
-                    <View style={styles.footer}>
-                        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
-                            <Fingerprint size={22} color="#64748b" />
-                            <Text style={styles.footerLabel}>Mark Attendance</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.footerButton}>
-                            <MessageSquare size={22} color="#059669" />
-                            <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Chat</Text>
-                        </TouchableOpacity>
-                        
-                        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
-                            <CalendarDays size={22} color="#64748b" />
-                            <Text style={styles.footerLabel}>Leaves</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
-                            <HistoryIcon size={22} color="#64748b" />
-                            <Text style={styles.footerLabel}>History</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
-                            <PartyPopper size={22} color="#64748b" />
-                            <Text style={styles.footerLabel}>Holidays</Text>
-                        </TouchableOpacity>
-                    </View>
-                )}
+
+                {!selectedKey && <FooterNav activeTab="chat" />}
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    footer: {
-        flexDirection: 'row',
-        backgroundColor: '#fff',
-        borderTopWidth: 1,
-        borderTopColor: '#e2e8f0',
-        paddingVertical: 12,
-        elevation: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-    },
-    footerButton: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 8
-    },
-    footerLabel: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: '#64748b',
-        textAlign: 'center'
-    },
     container: {
         flex: 1,
         backgroundColor: "#ffffff",
@@ -2396,108 +2407,60 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: "#ffffff",
     },
-    mainChat: {
-        flex: 1,
-        backgroundColor: "#f8fafc",
-    },
-    emptyState: {
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "flex-start",
-        paddingTop: 80,
-    },
-    emptyStateText: {
-        color: "#64748b",
-        fontSize: 16,
-    },
-    header: {
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: 16,
-        paddingTop: Platform.OS === 'android' ? 40 : 16,
-        borderBottomWidth: 1,
-        borderBottomColor: "#e2e8f0",
-    },
-    headerLeft: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-    },
-    logo: {
-        width: 80,
-        height: 24,
-    },
-    chatHeader: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: "#e2e8f0",
-        backgroundColor: "#ffffff",
-        height: 64,
-    },
-    chatHeaderInfo: {
-        flex: 1,
-        justifyContent: "center",
-        marginLeft: 4,
-    },
-    backButton: {
-        marginRight: 4,
-        padding: 4,
-    },
-    headerTitle: {
-        fontSize: 16,
-        fontWeight: "700",
-        color: "#0f172a",
-    },
-    headerSubtitle: {
-        fontSize: 12,
-        color: "#64748b",
-        marginTop: 2,
-    },
-    conversationPreview: {
-        fontSize: 12,
-        color: "#64748b",
-        marginTop: -1,
-        flex: 1,
-    },
-    conversationTime: {
-        fontSize: 11,
-        color: "#64748b",
-    },
-    conversationSubHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
+    topBarActions: {
+        alignItems: "flex-end",
     },
     createGroupBtn: {
-        padding: 6,
-        borderRadius: 6,
-        borderWidth: 1,
-        borderColor: "#cbd5e1",
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        borderWidth: 1.5,
+        borderColor: "#d1fae5",
+        backgroundColor: "#f0fdf4",
+        alignItems: "center",
+        justifyContent: "center",
     },
     searchContainer: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        position: "relative",
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+    },
+    searchInputWrapper: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#f8fafc",
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        height: 42,
+    },
+    searchIcon: {
+        marginRight: 8,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 14,
+        color: "#0f172a",
+        paddingVertical: 0,
+    },
+    searchClear: {
+        padding: 4,
     },
     filterTabs: {
-        paddingHorizontal: 16,
-        paddingBottom: 6,
+        paddingHorizontal: 14,
         gap: 8,
+        paddingVertical: 8,
+        marginBottom: -2,
     },
     filterTab: {
         flexDirection: "row",
         alignItems: "center",
-        justifyContent: "center",
-        gap: 4,
-        paddingHorizontal: 10,
-        height: 24,
-        borderRadius: 12,
+        gap: 5,
+        paddingHorizontal: 12,
+        height: 32,
+        borderRadius: 16,
         borderWidth: 1,
-        borderColor: "#cbd5e1",
+        borderColor: "#e2e8f0",
         backgroundColor: "#f8fafc",
     },
     filterTabActive: {
@@ -2505,339 +2468,652 @@ const styles = StyleSheet.create({
         borderColor: "#059669",
     },
     filterTabText: {
-        fontSize: 11,
+        fontSize: 13,
         fontWeight: "600",
-        color: "#334155",
+        color: "#475569",
     },
     filterTabTextActive: {
         color: "#ffffff",
     },
     filterBadge: {
-        minWidth: 16,
-        paddingHorizontal: 4,
-        height: 14,
-        borderRadius: 7,
-        backgroundColor: "#ffffff",
+        minWidth: 20,
+        paddingHorizontal: 5,
+        height: 18,
+        borderRadius: 9,
+        backgroundColor: "#e2e8f0",
         alignItems: "center",
         justifyContent: "center",
     },
     filterBadgeActive: {
-        backgroundColor: "rgba(255,255,255,0.18)",
+        backgroundColor: "rgba(255,255,255,0.25)",
     },
     filterBadgeText: {
-        fontSize: 9,
+        fontSize: 11,
         fontWeight: "700",
         color: "#475569",
     },
     filterBadgeTextActive: {
         color: "#ffffff",
     },
-    searchIcon: {
-        position: "absolute",
-        left: 28,
-        top: 22,
-        zIndex: 1,
+    conversationList: {
+        flex: 1,
+        marginTop: -600,
     },
-    searchInput: {
-        backgroundColor: "#f8fafc",
-        borderWidth: 1,
-        borderColor: "#cbd5e1",
-        borderRadius: 8,
-        paddingLeft: 36,
-        paddingRight: 12,
-        paddingVertical: 8,
-        fontSize: 14,
-        color: "#0f172a",
+    conversationSectionTitle: {
+        fontSize: 13,
+        fontWeight: "700",
+        color: "#64748b",
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 4,
+        backgroundColor: "#ffffff",
+    },
+    firstConversationSectionTitle: {
+        paddingTop: 4,
+    },
+    conversationItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        backgroundColor: "#ffffff",
+        marginTop: 0,
+    },
+    conversationItemActive: {
+        backgroundColor: "#f0fdf4",
+    },
+    avatarWrapper: {
+        position: "relative",
+        marginRight: 12,
+    },
+    conversationAvatar: {
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        backgroundColor: "#e2e8f0",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
     },
     avatarImage: {
         width: "100%",
         height: "100%",
-        borderRadius: 20,
+        borderRadius: 26,
     },
     groupAvatarIcon: {
         width: "100%",
         height: "100%",
         alignItems: "center",
         justifyContent: "center",
+        backgroundColor: "#f0fdf4",
+    },
+    conversationAvatarText: {
+        fontSize: 18,
+        fontWeight: "700",
+        color: "#475569",
+    },
+    onlineDot: {
+        position: "absolute",
+        bottom: 2,
+        right: 2,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: "#10b981",
+        borderWidth: 2,
+        borderColor: "#ffffff",
+    },
+    conversationContent: {
+        flex: 1,
+        justifyContent: "center",
+    },
+    conversationTopRow: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 4,
+    },
+    conversationName: {
+        fontSize: 15,
+        fontWeight: "600",
+        color: "#0f172a",
+        flex: 1,
+        marginRight: 8,
+    },
+    conversationNameBold: {
+        fontWeight: "700",
+        color: "#0f172a",
+    },
+    conversationTopRight: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    conversationTime: {
+        fontSize: 11,
+        color: "#94a3b8",
+        fontWeight: "500",
+    },
+    conversationTimeUnread: {
+        color: "#059669",
+        fontWeight: "700",
+    },
+    conversationBottomRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    conversationPreview: {
+        fontSize: 13,
+        color: "#94a3b8",
+        flex: 1,
+        marginRight: 8,
+        fontWeight: "400",
+    },
+    conversationPreviewBold: {
+        color: "#475569",
+        fontWeight: "600",
+    },
+    unreadBadge: {
+        backgroundColor: "#059669",
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        borderRadius: 10,
+        minWidth: 20,
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    unreadText: {
+        color: "#ffffff",
+        fontSize: 10,
+        fontWeight: "700",
+    },
+    emptyConversationState: {
+        paddingHorizontal: 24,
+        paddingTop: 60,
+        alignItems: "center",
+    },
+    emptyConversationTitle: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: "#0f172a",
+        marginTop: 16,
+    },
+    emptyConversationSubtitle: {
+        fontSize: 13,
+        color: "#94a3b8",
+        textAlign: "center",
+        marginTop: 6,
+        lineHeight: 20,
+    },
+    mainChat: {
+        flex: 1,
         backgroundColor: "#f1f5f9",
-        borderRadius: 20,
+    },
+    chatHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 8,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: "#e2e8f0",
+        backgroundColor: "#ffffff",
+        minHeight: 62,
+    },
+    backButton: {
+        padding: 6,
+        marginRight: 2,
+        borderRadius: 8,
+    },
+    chatHeaderInfo: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        marginLeft: 2,
+        paddingRight: 4,
+    },
+    chatHeaderAvatarWrapper: {
+        position: "relative",
+        marginRight: 10,
     },
     headerAvatarContainer: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        borderWidth: 2,
-        marginRight: 10,
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: "#f0fdf4",
+        borderWidth: 1.5,
+        borderColor: "#d1fae5",
         overflow: "hidden",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#f1f5f9",
     },
     headerAvatarImage: {
         width: "100%",
         height: "100%",
     },
     headerAvatarText: {
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: "700",
-        color: "#64748b",
+        color: "#059669",
     },
-    conversationList: {
+    headerOnlineDot: {
+        position: "absolute",
+        bottom: 1,
+        right: 1,
+        width: 11,
+        height: 11,
+        borderRadius: 6,
+        backgroundColor: "#10b981",
+        borderWidth: 2,
+        borderColor: "#ffffff",
+    },
+    chatHeaderTextBlock: {
         flex: 1,
-    },
-    conversationItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-    },
-    conversationItemActive: {
-        backgroundColor: "#f0fdf4",
-    },
-    conversationAvatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: "#e2e8f0",
-        alignItems: "center",
         justifyContent: "center",
-        marginRight: 12,
     },
-    conversationAvatarText: {
+    chatHeaderName: {
         fontSize: 16,
-        fontWeight: "bold",
-        color: "#475569",
-    },
-    conversationInfo: {
-        flex: 1,
-        borderBottomWidth: 1,
-        borderBottomColor: "#f1f5f9",
-        paddingBottom: 10,
-    },
-    conversationHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 2,
-    },
-    conversationMeta: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-        marginLeft: 8,
-    },
-    conversationName: {
-        fontSize: 16,
-        fontWeight: "bold",
-        color: "#0f172a",
-        flex: 1,
-    },
-    unreadBadge: {
-        backgroundColor: "#25D366",
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 10,
-        minWidth: 20,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    unreadText: {
-        color: "#ffffff",
-        fontSize: 10,
-        fontWeight: "bold",
-    },
-    emptyConversationState: {
-        paddingHorizontal: 24,
-        paddingTop: 32,
-        alignItems: "flex-start",
-    },
-    emptyConversationTitle: {
-        fontSize: 15,
         fontWeight: "700",
         color: "#0f172a",
+        letterSpacing: -0.2,
     },
-    emptyConversationSubtitle: {
-        fontSize: 13,
-        color: "#64748b",
-        textAlign: "left",
-        marginTop: 6,
+    chatHeaderSubtitle: {
+        fontSize: 12,
+        color: "#94a3b8",
+        marginTop: 1,
+        fontWeight: "500",
+    },
+    chatHeaderSubtitleOnline: {
+        color: "#10b981",
+        fontWeight: "600",
+    },
+    chatHeaderActions: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 2,
+    },
+    headerActionBtn: {
+        padding: 8,
+        borderRadius: 8,
     },
     messagesList: {
         flex: 1,
     },
-    messageWrapper: {
+    messagesContent: {
+        paddingHorizontal: 12,
+        paddingVertical: 16,
+        gap: 10,
+    },
+    messageRow: {
         flexDirection: "row",
+        alignItems: "flex-end",
         width: "100%",
     },
-    messageWrapperLeft: {
+    messageRowLeft: {
         justifyContent: "flex-start",
-        paddingLeft: 4,
-        paddingRight: 40,
+        paddingRight: 52,
     },
-    messageWrapperRight: {
+    messageRowRight: {
         justifyContent: "flex-end",
-        paddingLeft: 40,
-        paddingRight: 4,
+        paddingLeft: 52,
     },
-    messageBubbleAvatar: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        marginRight: 8,
-        marginTop: 4,
-        backgroundColor: "#f1f5f9",
+    messageSenderAvatar: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: "#e2e8f0",
         alignItems: "center",
         justifyContent: "center",
+        marginRight: 8,
+        marginBottom: 2,
         overflow: "hidden",
-        borderWidth: 1,
-        borderColor: "#e2e8f0",
+        flexShrink: 0,
     },
-    messageBubbleAvatarImage: {
+    messageSenderAvatarImg: {
         width: "100%",
         height: "100%",
     },
-    messageBubbleAvatarText: {
+    messageSenderAvatarText: {
         fontSize: 12,
         fontWeight: "700",
         color: "#64748b",
     },
     messageBubble: {
-        maxWidth: "85%",
-        borderRadius: 12,
-        padding: 10,
-        position: "relative",
+        maxWidth: "82%",
+        borderRadius: 16,
+        paddingHorizontal: 12,
+        paddingTop: 8,
+        paddingBottom: 6,
     },
     messageBubbleLeft: {
         backgroundColor: "#ffffff",
-        borderWidth: 1,
+        borderWidth: StyleSheet.hairlineWidth,
         borderColor: "#e2e8f0",
+        borderBottomLeftRadius: 4,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 2,
+        elevation: 1,
     },
     messageBubbleRight: {
-        backgroundColor: "#d1fae5",
+        backgroundColor: "#dcfce7",
+        borderBottomRightRadius: 4,
+    },
+    bubbleSenderName: {
+        fontSize: 11,
+        fontWeight: "700",
+        color: "#059669",
+        marginBottom: 4,
+    },
+    bubbleReplyPreview: {
+        backgroundColor: "#f1f5f9",
+        borderLeftWidth: 3,
+        borderLeftColor: "#94a3b8",
+        borderRadius: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        marginBottom: 6,
+    },
+    bubbleReplyPreviewRight: {
+        backgroundColor: "#bbf7d0",
+        borderLeftColor: "#059669",
+    },
+    bubbleReplyName: {
+        fontSize: 11,
+        fontWeight: "700",
+        color: "#059669",
+        marginBottom: 2,
+    },
+    bubbleReplyText: {
+        fontSize: 11,
+        color: "#64748b",
+    },
+    messageText: {
+        fontSize: 14,
+        color: "#0f172a",
+        lineHeight: 20,
+    },
+    messageTextRight: {
+        color: "#064e3b",
+    },
+    editInput: {
+        fontSize: 14,
+        color: "#0f172a",
+        borderWidth: 1,
+        borderColor: "#cbd5e1",
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        minHeight: 40,
+        textAlignVertical: "top",
+    },
+    editActions: {
+        flexDirection: "row",
+        justifyContent: "flex-end",
+        marginTop: 8,
+        gap: 12,
+    },
+    editCancelBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+    },
+    editCancelText: {
+        color: "#ef4444",
+        fontSize: 13,
+        fontWeight: "600",
+    },
+    editSaveBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        backgroundColor: "#059669",
+        borderRadius: 8,
+    },
+    editSaveText: {
+        color: "#ffffff",
+        fontSize: 13,
+        fontWeight: "700",
     },
     attachmentsContainer: {
-        marginBottom: 8,
+        marginBottom: 6,
         gap: 4,
     },
     attachmentItem: {
-        borderRadius: 8,
+        borderRadius: 10,
         overflow: "hidden",
-        backgroundColor: "#f1f5f9",
     },
     attachmentImage: {
         width: 200,
-        height: 200,
+        height: 180,
         resizeMode: "cover",
+        borderRadius: 10,
     },
     fileAttachment: {
         flexDirection: "row",
         alignItems: "center",
-        padding: 8,
+        padding: 10,
         gap: 8,
-        backgroundColor: "#f1f5f9",
-        borderRadius: 6,
+        backgroundColor: "#f8fafc",
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
     },
     fileName: {
         fontSize: 12,
         color: "#475569",
         flex: 1,
     },
-    senderName: {
-        fontSize: 12,
-        fontWeight: "600",
-        color: "#64748b",
-        marginBottom: 4,
-    },
-    messageContent: {
-        fontSize: 14,
-        color: "#0f172a",
-        flexShrink: 1,
-    },
-    inputContainer: {
+    reactionsContainer: {
         flexDirection: "row",
-        alignItems: "flex-end",
-        padding: 12,
-        backgroundColor: "#ffffff",
-        borderTopWidth: 1,
-        borderTopColor: "#e2e8f0",
-        paddingBottom: Platform.OS === 'ios' ? 24 : 12,
+        flexWrap: "wrap",
+        marginTop: 6,
+        gap: 4,
     },
-    attachButton: {
-        padding: 10,
-        marginRight: 8,
-        justifyContent: "center",
+    reactionBadge: {
+        backgroundColor: "#ffffff",
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        borderRadius: 12,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+    },
+    reactionText: {
+        fontSize: 13,
+    },
+    messageMeta: {
+        flexDirection: "row",
         alignItems: "center",
+        marginTop: 5,
+        gap: 4,
+    },
+    messageMetaRight: {
+        justifyContent: "flex-end",
+    },
+    messageTime: {
+        fontSize: 10,
+        color: "#94a3b8",
+        fontWeight: "500",
+    },
+    messageActions: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        marginLeft: 4,
+    },
+    replyBar: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#ffffff",
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: "#e2e8f0",
+        gap: 10,
+    },
+    replyBarLeft: {
+        width: 3,
+        height: 36,
+        backgroundColor: "#059669",
+        borderRadius: 2,
+    },
+    replyBarContent: {
+        flex: 1,
+    },
+    replyBarName: {
+        fontSize: 12,
+        fontWeight: "700",
+        color: "#059669",
+        marginBottom: 2,
+    },
+    replyBarText: {
+        fontSize: 12,
+        color: "#64748b",
     },
     pendingFilesContainer: {
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        paddingBottom: 4,
+        paddingHorizontal: 14,
+        paddingVertical: 8,
         backgroundColor: "#f8fafc",
-        borderTopWidth: 1,
+        borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: "#e2e8f0",
     },
     pendingFileBadge: {
         flexDirection: "row",
         alignItems: "center",
+        gap: 6,
         backgroundColor: "#e2e8f0",
-        paddingHorizontal: 12,
+        paddingHorizontal: 10,
         paddingVertical: 6,
         borderRadius: 16,
-        maxWidth: 200,
+        maxWidth: 180,
     },
     pendingFileText: {
         fontSize: 12,
         color: "#334155",
-        marginRight: 6,
-        flexShrink: 1,
+        flex: 1,
+    },
+    inputBar: {
+        flexDirection: "row",
+        alignItems: "flex-end",
+        paddingHorizontal: 10,
+        paddingTop: 10,
+        backgroundColor: "#ffffff",
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: "#e2e8f0",
+        gap: 8,
+    },
+    attachBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 1,
     },
     messageInput: {
         flex: 1,
-        backgroundColor: "#ffffff",
+        backgroundColor: "#f8fafc",
         borderWidth: 1,
-        borderColor: "#cbd5e1",
+        borderColor: "#e2e8f0",
         borderRadius: 20,
         paddingHorizontal: 16,
         paddingTop: 10,
         paddingBottom: 10,
         maxHeight: 120,
-        minHeight: 40,
+        minHeight: 42,
         fontSize: 14,
         color: "#0f172a",
         textAlignVertical: "top",
     },
-    copyButton: {
-        marginLeft: 8,
-        padding: 4,
-    },
-    sendButton: {
+    sendBtn: {
         backgroundColor: "#059669",
         borderRadius: 20,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        marginLeft: 12,
+        paddingHorizontal: 18,
+        height: 42,
         justifyContent: "center",
+        alignItems: "center",
+        marginBottom: 1,
     },
-    sendButtonDisabled: {
-        opacity: 0.6,
+    sendBtnDisabled: {
+        opacity: 0.45,
     },
-    sendButtonText: {
+    sendBtnText: {
         color: "#ffffff",
-        fontWeight: "600",
+        fontWeight: "700",
         fontSize: 14,
     },
-
+    mentionPopup: {
+        position: "absolute",
+        bottom: 64,
+        left: 12,
+        right: 12,
+        backgroundColor: "#ffffff",
+        borderRadius: 14,
+        maxHeight: 220,
+        elevation: 12,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        borderWidth: 1,
+        borderColor: "#e2e8f0",
+        zIndex: 1000,
+        overflow: "hidden",
+    },
+    mentionItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: "#f1f5f9",
+        gap: 10,
+    },
+    mentionAvatar: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: "#e2e8f0",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+    },
+    mentionAvatarText: {
+        fontSize: 14,
+        fontWeight: "700",
+        color: "#475569",
+    },
+    mentionName: {
+        fontSize: 14,
+        color: "#0f172a",
+        fontWeight: "600",
+    },
+    mentionDept: {
+        fontSize: 11,
+        color: "#94a3b8",
+        marginTop: 1,
+    },
+    mentionEmpty: {
+        padding: 20,
+        alignItems: "center",
+    },
+    mentionEmptyText: {
+        color: "#94a3b8",
+        fontSize: 13,
+    },
     modalBackdrop: {
         flex: 1,
-        backgroundColor: "rgba(0,0,0,0.5)",
+        backgroundColor: "rgba(0,0,0,0.45)",
         justifyContent: "flex-end",
     },
     modalContent: {
         backgroundColor: "#ffffff",
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        maxHeight: "80%",
-        padding: 20,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        maxHeight: "85%",
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 12,
     },
     modalHeader: {
         flexDirection: "row",
@@ -2850,8 +3126,7 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         color: "#0f172a",
     },
-    modalScroll: {
-    },
+    modalScroll: {},
     profileHeader: {
         alignItems: "center",
         marginBottom: 20,
@@ -2874,26 +3149,28 @@ const styles = StyleSheet.create({
     },
     profileName: {
         fontSize: 18,
-        fontWeight: "600",
+        fontWeight: "700",
         color: "#0f172a",
     },
     profileDept: {
-        fontSize: 14,
+        fontSize: 13,
         color: "#64748b",
         marginTop: 4,
     },
     profileSection: {
-        borderTopWidth: 1,
+        borderTopWidth: StyleSheet.hairlineWidth,
         borderTopColor: "#e2e8f0",
         paddingVertical: 16,
     },
     profileRow: {
-        marginBottom: 12,
+        marginBottom: 14,
     },
     profileLabel: {
-        fontSize: 12,
-        fontWeight: "600",
-        color: "#64748b",
+        fontSize: 11,
+        fontWeight: "700",
+        color: "#94a3b8",
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
         marginBottom: 4,
     },
     profileValueRow: {
@@ -2904,12 +3181,43 @@ const styles = StyleSheet.create({
     profileValue: {
         fontSize: 14,
         color: "#0f172a",
+        flex: 1,
+    },
+    copyButton: {
+        marginLeft: 8,
+        padding: 6,
     },
     profileSectionTitle: {
-        fontSize: 14,
-        fontWeight: "600",
+        fontSize: 13,
+        fontWeight: "700",
         color: "#64748b",
         marginBottom: 12,
+        textTransform: "uppercase",
+        letterSpacing: 0.4,
+    },
+    tabRow: {
+        flexDirection: "row",
+        borderBottomWidth: 1,
+        borderBottomColor: "#e2e8f0",
+        marginBottom: 14,
+    },
+    tabItem: {
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderBottomWidth: 2,
+        borderBottomColor: "transparent",
+    },
+    tabItemActive: {
+        borderBottomColor: "#059669",
+    },
+    tabItemText: {
+        fontSize: 13,
+        fontWeight: "600",
+        color: "#94a3b8",
+        textTransform: "capitalize",
+    },
+    tabItemTextActive: {
+        color: "#059669",
     },
     sharedList: {
         gap: 10,
@@ -2923,7 +3231,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         padding: 12,
         backgroundColor: "#ffffff",
-        marginBottom: 10,
+        marginBottom: 4,
     },
     sharedCardBody: {
         flex: 1,
@@ -2934,19 +3242,19 @@ const styles = StyleSheet.create({
         color: "#0f172a",
     },
     sharedSecondaryText: {
-        fontSize: 12,
-        color: "#64748b",
-        marginTop: 4,
+        fontSize: 11,
+        color: "#94a3b8",
+        marginTop: 3,
     },
     mediaGrid: {
         flexDirection: "row",
         flexWrap: "wrap",
-        gap: 8,
+        gap: 6,
     },
     mediaItem: {
         width: "31%",
         aspectRatio: 1,
-        borderRadius: 8,
+        borderRadius: 10,
         overflow: "hidden",
         backgroundColor: "#f1f5f9",
     },
@@ -2955,60 +3263,64 @@ const styles = StyleSheet.create({
         height: "100%",
     },
     profileEmptyText: {
-        fontSize: 12,
-        color: "#64748b",
+        fontSize: 13,
+        color: "#94a3b8",
+        textAlign: "center",
+        paddingVertical: 12,
     },
     groupMemberRow: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        gap: 12,
+        gap: 8,
         paddingVertical: 8,
     },
     groupMemberIdentity: {
         flexDirection: "row",
         alignItems: "center",
         flex: 1,
+        gap: 10,
     },
     groupMemberMeta: {
         fontSize: 11,
-        color: "#64748b",
+        color: "#94a3b8",
         marginTop: 2,
     },
     groupMemberActions: {
         flexDirection: "row",
-        gap: 8,
+        gap: 6,
+        flexShrink: 0,
     },
     groupMemberActionBtn: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
         borderRadius: 999,
         backgroundColor: "#ecfdf5",
     },
     groupMemberActionText: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: "700",
         color: "#047857",
     },
     groupAdminActionBtn: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
         borderRadius: 999,
         backgroundColor: "#eff6ff",
     },
     groupAdminActionText: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: "700",
         color: "#1d4ed8",
     },
     groupRemoveActionBtn: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
         borderRadius: 999,
         backgroundColor: "#fef2f2",
     },
     groupRemoveActionText: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: "700",
         color: "#dc2626",
     },
@@ -3022,7 +3334,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         paddingHorizontal: 14,
         paddingVertical: 12,
-        marginBottom: 12,
+        marginBottom: 14,
     },
     adminControlLeft: {
         flexDirection: "row",
@@ -3081,13 +3393,13 @@ const styles = StyleSheet.create({
     groupNameInput: {
         backgroundColor: "#f8fafc",
         borderWidth: 1,
-        borderColor: "#cbd5e1",
+        borderColor: "#e2e8f0",
         borderRadius: 12,
         paddingHorizontal: 14,
         paddingVertical: 12,
         fontSize: 15,
         color: "#0f172a",
-        marginBottom: 16,
+        marginBottom: 14,
     },
     memberSelectorList: {
         marginTop: 8,
@@ -3100,7 +3412,7 @@ const styles = StyleSheet.create({
         borderColor: "#e2e8f0",
         borderRadius: 14,
         padding: 10,
-        marginBottom: 10,
+        marginBottom: 8,
         backgroundColor: "#ffffff",
     },
     memberSelectRowActive: {
@@ -3111,6 +3423,7 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         flex: 1,
+        gap: 10,
     },
     memberSelectIndicator: {
         fontSize: 12,
@@ -3118,144 +3431,31 @@ const styles = StyleSheet.create({
         color: "#047857",
     },
     primaryModalButton: {
-        marginTop: 10,
+        marginTop: 8,
         backgroundColor: "#059669",
         borderRadius: 14,
         alignItems: "center",
         paddingVertical: 14,
-        marginBottom: 12,
+        marginBottom: 8,
     },
     primaryModalButtonText: {
         color: "#ffffff",
         fontSize: 14,
         fontWeight: "700",
     },
-    mentionPopup: {
-        position: "absolute",
-        bottom: 70,
-        left: 12,
-        right: 12,
-        backgroundColor: "#ffffff",
-        borderRadius: 12,
-        maxHeight: 200,
-        elevation: 10,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 8,
-        borderWidth: 1,
-        borderColor: "#e2e8f0",
-        zIndex: 1000,
-    },
-    mentionItem: {
-        flexDirection: "row",
-        alignItems: "center",
-        padding: 12,
-        borderBottomWidth: 1,
-        borderBottomColor: "#f1f5f9",
-    },
-    mentionAvatar: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: "#e2e8f0",
-        alignItems: "center",
-        justifyContent: "center",
-        marginRight: 10,
-    },
-    mentionAvatarText: {
-        fontSize: 14,
-        fontWeight: "bold",
-        color: "#475569",
-    },
-    mentionName: {
-        fontSize: 14,
-        color: "#0f172a",
-        fontWeight: "500",
-    },
-    mentionEmpty: {
-        padding: 20,
-        alignItems: "center",
-    },
-    mentionEmptyText: {
-        color: "#64748b",
-        fontSize: 13,
-    },
-    replyPreview: {
-        flexDirection: "row",
-        backgroundColor: "#f8fafc",
-        padding: 10,
-        borderLeftWidth: 4,
-        borderLeftColor: "#059669",
-        alignItems: "center",
-        marginHorizontal: 12,
-        marginTop: 8,
-        borderRadius: 4,
-    },
-    replyPreviewContent: {
-        flex: 1,
-    },
-    replyPreviewName: {
-        fontSize: 12,
-        fontWeight: "bold",
-        color: "#059669",
-        marginBottom: 2,
-    },
-    replyPreviewText: {
-        fontSize: 12,
-        color: "#64748b",
-    },
     forwardModal: {
         flex: 1,
-        backgroundColor: "rgba(0,0,0,0.5)",
+        backgroundColor: "rgba(0,0,0,0.45)",
         justifyContent: "center",
-        padding: 20,
+        padding: 16,
     },
     forwardContent: {
         backgroundColor: "#ffffff",
-        borderRadius: 16,
+        borderRadius: 20,
         maxHeight: "80%",
         padding: 16,
     },
     forwardList: {
         marginTop: 12,
-    },
-    reactionsContainer: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        marginTop: 4,
-        gap: 4,
-    },
-    reactionBadge: {
-        backgroundColor: "#ffffff",
-        borderWidth: 1,
-        borderColor: "#e2e8f0",
-        borderRadius: 12,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-    },
-    reactionText: {
-        fontSize: 12,
-    },
-    callButtons: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-    },
-    callButton: {
-        padding: 10,
-        borderRadius: 20,
-        backgroundColor: "transparent",
-    },
-    onlineStatus: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        backgroundColor: "#10b981",
-        borderWidth: 1.5,
-        borderColor: "#ffffff",
-        position: "absolute",
-        bottom: 0,
-        right: 0,
     },
 });

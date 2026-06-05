@@ -5,6 +5,7 @@ import { AttendanceRecord, Recipient, RequestItem, SummaryType } from "../types"
 import { calculateDays } from "../utils";
 import { buildApplyModalProps } from "./buildApplyModalProps";
 import { createHandleSubmitRequest, createResetForm } from "./leaveActions";
+import { DEFAULT_EMAIL_RECIPIENTS, getMobileUserSession } from "../../../utils/mobileSession";
 
 const leaveTypes = [
   { value: "sick", label: "Sick Leave" },
@@ -15,7 +16,6 @@ const leaveTypes = [
 
 export const useLeaveDashboard = () => {
   const [isLoading, setIsLoading] = useState({ summary: true, history: true, attendance: true });
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLeaveHistoryModalOpen, setIsLeaveHistoryModalOpen] = useState(false);
@@ -30,16 +30,13 @@ export const useLeaveDashboard = () => {
   const [isForgotTimePickerVisible, setForgotTimePickerVisibility] = useState(false);
   const [empIdOrEmail, setEmpIdOrEmail] = useState("");
   const [employeeName, setEmployeeName] = useState("");
+  const [employeeEmail, setEmployeeEmail] = useState("");
   const [toRecipients, setToRecipients] = useState<string[]>([]);
   const [ccRecipients, setCcRecipients] = useState<string[]>([]);
   const [extraRecipientEmails, setExtraRecipientEmails] = useState("");
   const [isToDropdownOpen, setIsToDropdownOpen] = useState(false);
   const [isCcDropdownOpen, setIsCcDropdownOpen] = useState(false);
-  const [allRecipients] = useState<Recipient[]>([
-    { id: "1", name: "HR Department", email: "hr@lemonpay.in", role: "HR", lockedInCc: true },
-    { id: "2", name: "Manager", email: "manager@lemonpay.in", role: "Manager" },
-    { id: "3", name: "Team Lead", email: "tl@lemonpay.in", role: "Lead" },
-  ]);
+  const [allRecipients] = useState<Recipient[]>([...DEFAULT_EMAIL_RECIPIENTS]);
   useEffect(() => {
     const lockedCc = allRecipients.filter((r) => r.lockedInCc).map((r) => r.id);
     setCcRecipients(lockedCc);
@@ -236,8 +233,16 @@ export const useLeaveDashboard = () => {
       }
 
       const allRequests = [
-        ...leavesData.map((item) => ({ ...item, requestType: "leave" })),
-        ...permissionsData.map((item) => ({ ...item, requestType: "permission" })),
+        ...leavesData.map((item) => ({
+          ...item,
+          id: item.id || item._id || `${item.employeeId || item.empIdOrEmail}-${item.startDate || item.date}`,
+          requestType: "leave",
+        })),
+        ...permissionsData.map((item) => ({
+          ...item,
+          id: item.id || item._id || `${item.employeeId || item.empIdOrEmail}-${item.startDate || item.date}`,
+          requestType: "permission",
+        })),
       ].filter((req) => req.empIdOrEmail === id || req.employeeId === id || (req as any).empId === id);
 
       calculateSummaryFromRequests(allRequests);
@@ -269,16 +274,27 @@ export const useLeaveDashboard = () => {
 
   useEffect(() => {
     const init = async () => {
-      const id = await AsyncStorage.getItem("userEmpId");
-      const name = await AsyncStorage.getItem("userName");
+      const session = await getMobileUserSession();
+      const id = session.userEmpId;
+      const name = session.userName;
       if (id) {
         setEmpIdOrEmail(id);
         setEmployeeName(name || "Employee");
+        setEmployeeEmail(session.userEmail || "");
         await refreshData();
       }
     };
     init();
   }, [refreshData]);
+
+  useEffect(() => {
+    if (!empIdOrEmail) return;
+    const intervalId = setInterval(() => {
+      void refreshData();
+    }, 20000);
+
+    return () => clearInterval(intervalId);
+  }, [empIdOrEmail, refreshData]);
 
   useEffect(() => {
     if (startDate && endDate && isCalculatingFromDates) {
@@ -328,6 +344,8 @@ export const useLeaveDashboard = () => {
     forgotTime,
     forgotReason,
     employeeName,
+    employeeEmail,
+    allRecipients,
     toRecipients,
     ccRecipients,
     extraRecipientEmails,
@@ -400,7 +418,7 @@ export const useLeaveDashboard = () => {
   const applyModalProps = buildApplyModalProps(
     {
       isModalOpen,
-      isSubmitting,
+      isSubmitting: false,
       requestType,
       employeeName,
       empIdOrEmail,

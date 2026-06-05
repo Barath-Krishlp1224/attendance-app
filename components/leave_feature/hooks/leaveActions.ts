@@ -64,6 +64,8 @@ interface SubmitParams {
   forgotTime: string;
   forgotReason: string;
   employeeName: string;
+  employeeEmail: string;
+  allRecipients: { id: string; email: string }[];
   toRecipients: string[];
   ccRecipients: string[];
   extraRecipientEmails: string;
@@ -73,11 +75,28 @@ interface SubmitParams {
 }
 
 export const createHandleSubmitRequest = (params: SubmitParams) => async () => {
+  const parseExtraEmails = (raw: string) =>
+    Array.from(
+      new Set(
+        raw
+          .split(/[,\s]+/)
+          .map((entry) => entry.trim())
+          .filter((entry) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(entry))
+      )
+    );
+
   const employeeId = await params.getCurrentEmployeeId();
   if (!employeeId) {
     Alert.alert("Error", "Please log in to submit requests");
     return;
   }
+
+  const selectedTo = params.toRecipients
+    .map((id) => params.allRecipients.find((recipient) => recipient.id === id)?.email)
+    .filter(Boolean) as string[];
+  const selectedCc = params.ccRecipients
+    .map((id) => params.allRecipients.find((recipient) => recipient.id === id)?.email)
+    .filter(Boolean) as string[];
 
   if (params.requestType === "leave") {
     if (!params.startDate) {
@@ -90,6 +109,14 @@ export const createHandleSubmitRequest = (params: SubmitParams) => async () => {
         ? parseFloat(params.editableDays)
         : calculateDays(params.startDate, params.endDate || params.startDate);
 
+    const extraTo = parseExtraEmails(params.extraRecipientEmails);
+    const toEmails = Array.from(new Set([...selectedTo, ...extraTo]));
+
+    if (toEmails.length === 0) {
+      Alert.alert("Error", "Please select at least one email recipient");
+      return;
+    }
+
     const leaveData = {
       empIdOrEmail: employeeId,
       leaveType: params.leaveType,
@@ -100,9 +127,23 @@ export const createHandleSubmitRequest = (params: SubmitParams) => async () => {
       status: "pending",
       employeeId: employeeId,
       employeeName: params.employeeName,
-      toRecipients: params.toRecipients,
-      ccRecipients: params.ccRecipients,
-      extraRecipientEmails: params.extraRecipientEmails,
+      employeeEmail: params.employeeEmail,
+      emailNotification: {
+        from: params.employeeEmail || `${employeeId}@lemonpay.tech`,
+        to: toEmails,
+        cc: selectedCc,
+        subject: `Leave Request - ${params.employeeName} (${employeeId})`,
+        html: `
+          <h2>New Leave Request Submitted</h2>
+          <p><strong>Employee:</strong> ${params.employeeName} (${employeeId})</p>
+          <p><strong>Leave Type:</strong> ${params.leaveType}</p>
+          <p><strong>Date Range:</strong> ${params.startDate}${params.endDate && params.endDate !== params.startDate ? ` to ${params.endDate}` : ""}</p>
+          <p><strong>Duration:</strong> ${days} day(s)</p>
+          <p><strong>Reason:</strong> ${params.description || "No reason provided"}</p>
+          <p><strong>Status:</strong> Pending Approval</p>
+          <p><strong>Submitted At:</strong> ${new Date().toLocaleString()}</p>
+        `,
+      },
     };
 
     try {
@@ -141,11 +182,17 @@ export const createHandleSubmitRequest = (params: SubmitParams) => async () => {
     permissionType: params.permissionType,
     employeeId: employeeId,
     employeeName: params.employeeName,
+    employeeEmail: params.employeeEmail,
     status: "pending",
-    toRecipients: params.toRecipients,
-    ccRecipients: params.ccRecipients,
-    extraRecipientEmails: params.extraRecipientEmails,
   };
+
+  const extraTo = parseExtraEmails(params.extraRecipientEmails);
+  const toEmails = Array.from(new Set([...selectedTo, ...extraTo]));
+
+  if (toEmails.length === 0) {
+    Alert.alert("Error", "Please select at least one email recipient");
+    return;
+  }
 
   const finalDuration = getFinalDuration(params.durationOption, params.hoursDuration, params.minutesDuration);
 
@@ -208,6 +255,22 @@ export const createHandleSubmitRequest = (params: SubmitParams) => async () => {
       description: params.description,
     };
   }
+
+  permissionData.emailNotification = {
+    from: params.employeeEmail || `${employeeId}@lemonpay.tech`,
+    to: toEmails,
+    cc: selectedCc,
+    subject: `${params.permissionType.toUpperCase()} Request - ${params.employeeName} (${employeeId})`,
+    html: `
+      <h2>New ${params.permissionType} Request Submitted</h2>
+      <p><strong>Employee:</strong> ${params.employeeName} (${employeeId})</p>
+      <p><strong>Request Type:</strong> ${params.permissionType}</p>
+      <p><strong>Date:</strong> ${params.permissionDate || params.startDate || params.forgotDate || "N/A"}</p>
+      <p><strong>Reason:</strong> ${params.description || params.forgotReason || "No reason provided"}</p>
+      <p><strong>Status:</strong> Pending Approval</p>
+      <p><strong>Submitted At:</strong> ${new Date().toLocaleString()}</p>
+    `,
+  };
 
   try {
     const response = await fetch(`${API_BASE_URL}/api/permissions`, {

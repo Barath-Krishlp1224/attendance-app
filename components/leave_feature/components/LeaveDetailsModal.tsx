@@ -95,6 +95,23 @@ const LeaveDetailsModal: React.FC<LeaveDetailsModalProps> = ({ visible, request,
               </View>
             )}
 
+            {(request.approverName || request.approverRole || request.approvedAt) && (
+              <View style={styles.detailCard}>
+                <Text style={styles.detailLabel}>Approval Details</Text>
+                <Text style={styles.detailValue}>
+                  {request.approverName || "N/A"}{request.approverRole ? ` (${request.approverRole})` : ""}
+                </Text>
+                {request.approvedAt ? <Text style={styles.detailSubText}>{formatDate(request.approvedAt)}</Text> : null}
+              </View>
+            )}
+
+            {request.approvalRemarks && (
+              <View style={styles.detailCard}>
+                <Text style={styles.detailLabel}>Approver Remarks</Text>
+                <Text style={styles.detailText}>{request.approvalRemarks}</Text>
+              </View>
+            )}
+
             <TouchableOpacity style={styles.closeDetailsButton} onPress={onClose}>
               <Text style={styles.closeDetailsButtonText}>Close Details</Text>
             </TouchableOpacity>

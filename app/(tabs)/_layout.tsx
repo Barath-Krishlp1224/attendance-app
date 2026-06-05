@@ -9,6 +9,9 @@ export default function Layout() {
       <Stack.Screen name="leave" />
       <Stack.Screen name="att-history" />
       <Stack.Screen name="holidays" />
+      <Stack.Screen name="payslip" />
+      <Stack.Screen name="onboarding" />
+      <Stack.Screen name="regularization" />
       <Stack.Screen name="index" />
     </Stack>
   );

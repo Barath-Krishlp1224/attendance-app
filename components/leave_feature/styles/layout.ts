@@ -380,5 +380,8 @@ export const layoutStyles = (screenWidth: number) => ({
     fontSize: 10,
     color: "#64748b",
     marginTop: 4,
+    textAlign: "center",
+    width: "100%",
+    lineHeight: 12,
   },
 });

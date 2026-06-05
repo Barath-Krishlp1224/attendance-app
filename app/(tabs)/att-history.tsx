@@ -1,19 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
 import {
   Activity,
   AlertCircle,
   Calendar,
-  CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
   Filter,
-  Fingerprint,
-  History as HistoryIcon,
-  MessageSquare,
-  PartyPopper,
   Target,
   UserCheck
 } from 'lucide-react-native';
@@ -30,14 +24,18 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import FooterNav, {
+  getFooterNavClearance,
+} from '../../components/leave_feature/components/FooterNav';
+import TopBar from '../../components/common/TopBar';
 
 const API_BASE_URL = 'https://unity-uat.lemonpay.in';
 const TOTAL_WORK_DAYS = 320;
 const ITEMS_PER_PAGE = 5;
 
 const AttendanceHistoryScreen = () => {
-  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [attendanceList, setAttendanceList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -158,6 +156,7 @@ const AttendanceHistoryScreen = () => {
 
     return (
       <View style={styles.headerContent}>
+        <TopBar subtitle="Attendance History" />
         <View style={styles.titleContainer}>
           <Text style={styles.subtitle}>Attendance Logs</Text>
           <Text style={styles.subtitle}>
@@ -287,14 +286,14 @@ const AttendanceHistoryScreen = () => {
   if (loading && !refreshing) return <View style={styles.centered}><ActivityIndicator size="large" color="#2563eb" /></View>;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <FlatList
         data={paginatedList}
         renderItem={renderItem}
         keyExtractor={(item, index) => item._id || index.toString()}
         ListHeaderComponent={HeaderComponent}
         ListFooterComponent={filteredList.length > 0 ? PaginationControls : null}
-        contentContainerStyle={styles.listPadding}
+        contentContainerStyle={[styles.listPadding, { paddingBottom: getFooterNavClearance(insets.bottom) }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchAttendance(); }} />}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -304,30 +303,7 @@ const AttendanceHistoryScreen = () => {
           </View>
         }
       />
-      <View style={styles.footer}>
-
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
-          <Fingerprint size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Mark Attendance</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
-          <MessageSquare size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Chat</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
-          <CalendarDays size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Leaves</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
-          <HistoryIcon size={22} color="#059669" />
-          <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>History</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
-          <PartyPopper size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Holidays</Text>
-        </TouchableOpacity>
-      </View>
+      <FooterNav activeTab="history" />
     </SafeAreaView>
   );
 };
@@ -335,7 +311,7 @@ const AttendanceHistoryScreen = () => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8fafc' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  headerContent: { paddingTop: 40, paddingBottom: 10 },
+  headerContent: { paddingTop: 8, paddingBottom: 10 },
   titleContainer: { paddingHorizontal: 20, marginBottom: 20 },
   title: { fontSize: 26, fontWeight: '800', color: '#1e293b' },
   subtitle: { fontSize: 14, color: '#64748b' },
@@ -407,6 +383,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#64748b',
     marginTop: 4,
+    textAlign: 'center',
+    width: '100%',
+    lineHeight: 12,
   }
 });
 

@@ -1,541 +1,440 @@
-import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowRight,
-  Calendar,
-  CalendarDays,
-  CheckCircle2,
-  Clock,
-  Fingerprint,
-  History,
-  MessageSquare,
-  PartyPopper
-} from "lucide-react-native";
-import React, { useMemo, useState } from "react";
-import {
-  Dimensions,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { ArrowRight, Calendar, CalendarDays, CheckCircle2, Clock, Pencil, Plus, Trash2, X } from "lucide-react-native";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+import FooterNav, { getFooterNavClearance } from "../../components/leave_feature/components/FooterNav";
+import TopBar from "../../components/common/TopBar";
+import KeyboardAwareScrollView from "../../components/ui/keyboard-aware-scroll-view";
+import { API_BASE_URL, canManageHolidays } from "../../utils/mobileSession";
 
-interface Holiday {
-  date: string;
+type HolidayTab = "upcoming" | "recent" | "finished";
+
+type ApiHoliday = {
+  _id?: string;
+  name?: string;
+  description?: string;
+  holidayType?: string;
+  dateISO?: string;
+};
+
+type Holiday = {
+  id: string;
   name: string;
   description: string;
+  holidayType: string;
+  dateLabel: string;
   actualDate: Date;
-}
+  dateInputValue: string;
+};
+
+const EMPTY_FORM = {
+  id: "",
+  name: "",
+  dateISO: "",
+  description: "",
+  holidayType: "Local Holiday",
+};
+
+const HOLIDAY_TYPES = ["Local Holiday", "National Holiday", "Festival Holiday", "Company Holiday"];
+
+const formatDateLabel = (date: Date) =>
+  date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+const toInputDate = (date: Date) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().split("T")[0];
+};
+
+const normalizeHoliday = (holiday: ApiHoliday): Holiday | null => {
+  if (!holiday._id || !holiday.dateISO) return null;
+  const parsed = new Date(holiday.dateISO);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const actualDate = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+  return {
+    id: holiday._id,
+    name: String(holiday.name || "Holiday"),
+    description: String(holiday.description || "").trim(),
+    holidayType: String(holiday.holidayType || "Local Holiday"),
+    dateLabel: formatDateLabel(actualDate),
+    actualDate,
+    dateInputValue: toInputDate(actualDate),
+  };
+};
 
 const HolidaysPage = () => {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"upcoming" | "recent" | "finished">("upcoming");
+  const insets = useSafeAreaInsets();
+  const [activeTab, setActiveTab] = useState<HolidayTab>("upcoming");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [allowManagement, setAllowManagement] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [formState, setFormState] = useState(EMPTY_FORM);
 
-  const staticHolidays: Holiday[] = [
-    { date: "January 1", name: "New Year's Day", description: "A national holiday to mark the beginning of the new year.", actualDate: new Date(2026, 0, 1) },
-    { date: "January 15", name: "Pongal", description: "Harvest festival holidays.", actualDate: new Date(2026, 0, 15) },
-    { date: "January 26", name: "Republic Day", description: "Commemorating the adoption of the Constitution.", actualDate: new Date(2026, 0, 26) },
-    { date: "February 15", name: "Shivaratri", description: "Lord Shiva's birthday celebration.", actualDate: new Date(2026, 1, 15) },
-    { date: "March 19", name: "Ugadi", description: "Telugu New Year.", actualDate: new Date(2026, 2, 19) },
-    { date: "April 3", name: "Good Friday", description: "Observed during the Holy Week.", actualDate: new Date(2026, 3, 3) },
-    { date: "May 1", name: "Labor's Day", description: "Celebrating workers and laborers.", actualDate: new Date(2026, 4, 1) },
-    { date: "August 15", name: "Independence Day", description: "Marking India's independence.", actualDate: new Date(2026, 7, 15) },
-    { date: "October 2", name: "Gandhi Jayanti", description: "Birth anniversary of Mahatma Gandhi.", actualDate: new Date(2026, 9, 2) },
-    { date: "November 8", name: "Diwali", description: "The festival of lights.", actualDate: new Date(2026, 10, 8) },
-    { date: "December 25", name: "Christmas", description: "The birth of Jesus Christ.", actualDate: new Date(2026, 11, 25) },
-  ];
+  const loadAccess = useCallback(async () => {
+    const entries = await AsyncStorage.multiGet(["userRole", "userTeam", "userDesignation"]);
+    const map = Object.fromEntries(entries);
+    setAllowManagement(canManageHolidays(map.userRole || "", map.userTeam || "", map.userDesignation || ""));
+  }, []);
 
-  const today = new Date(); // Current date
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth();
-  const currentDay = today.getDate();
+  const loadHolidays = useCallback(async () => {
+    try {
+      setError("");
+      const response = await fetch(`${API_BASE_URL}/api/holidays`);
+      const data = await response.json();
+      const next: Holiday[] = Array.isArray(data?.holidays)
+        ? data.holidays.map(normalizeHoliday).filter((item: Holiday | null): item is Holiday => Boolean(item))
+        : [];
+      next.sort((a: Holiday, b: Holiday) => a.actualDate.getTime() - b.actualDate.getTime());
+      setHolidays(next);
+    } catch (loadError) {
+      console.error("Failed to load holidays:", loadError);
+      setError("Failed to load holidays.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  // Update holidays to current year
-  const updatedHolidays = useMemo(() => {
-    return staticHolidays.map(holiday => ({
-      ...holiday,
-      actualDate: new Date(currentYear, holiday.actualDate.getMonth(), holiday.actualDate.getDate())
-    }));
-  }, [currentYear]);
+  useEffect(() => {
+    void loadAccess();
+    void loadHolidays();
+  }, [loadAccess, loadHolidays]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      void loadHolidays();
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [loadHolidays]);
+
+  const todayStart = useMemo(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  }, []);
 
   const categorizedHolidays = useMemo(() => {
-    const todayDate = new Date(currentYear, currentMonth, currentDay);
-
-    const finished = updatedHolidays.filter(h => h.actualDate < todayDate);
-    const upcoming = updatedHolidays.filter(h => h.actualDate >= todayDate);
-    const thirtyDaysAgo = new Date(todayDate);
-    thirtyDaysAgo.setDate(todayDate.getDate() - 30);
-    const recent = finished.filter(h => h.actualDate >= thirtyDaysAgo);
-
+    const finished = holidays.filter((holiday) => holiday.actualDate < todayStart);
+    const upcoming = holidays.filter((holiday) => holiday.actualDate >= todayStart);
+    const thirtyDaysAgo = new Date(todayStart);
+    thirtyDaysAgo.setDate(todayStart.getDate() - 30);
+    const recent = finished.filter((holiday) => holiday.actualDate >= thirtyDaysAgo);
     return { finished, upcoming, recent };
-  }, [updatedHolidays, currentYear, currentMonth, currentDay]);
+  }, [holidays, todayStart]);
+
+  const currentDisplayList =
+    activeTab === "upcoming"
+      ? categorizedHolidays.upcoming
+      : activeTab === "recent"
+        ? categorizedHolidays.recent
+        : categorizedHolidays.finished;
 
   const tabs = [
-    {
-      id: "upcoming" as const,
-      label: "Upcoming",
-      icon: CalendarDays,
-      count: categorizedHolidays.upcoming.length,
-      color: "#2563eb",
-      bg: "#dbeafe"
-    },
-    {
-      id: "recent" as const,
-      label: "Recent",
-      icon: Clock,
-      count: categorizedHolidays.recent.length,
-      color: "#d97706",
-      bg: "#fef3c7"
-    },
-    {
-      id: "finished" as const,
-      label: "Finished",
-      icon: CheckCircle2,
-      count: categorizedHolidays.finished.length,
-      color: "#059669",
-      bg: "#d1fae5"
-    },
+    { id: "upcoming" as const, label: "Upcoming", icon: CalendarDays, count: categorizedHolidays.upcoming.length, color: "#2563eb", bg: "#dbeafe" },
+    { id: "recent" as const, label: "Recent", icon: Clock, count: categorizedHolidays.recent.length, color: "#d97706", bg: "#fef3c7" },
+    { id: "finished" as const, label: "Finished", icon: CheckCircle2, count: categorizedHolidays.finished.length, color: "#059669", bg: "#d1fae5" },
   ];
 
-  const currentDisplayList = activeTab === "upcoming"
-    ? categorizedHolidays.upcoming
-    : activeTab === "recent"
-      ? categorizedHolidays.recent
-      : categorizedHolidays.finished;
-
-  const formatMonth = (dateStr: string) => {
-    const month = dateStr.split(' ')[0];
-    return month.substring(0, 3).toUpperCase();
+  const resetForm = () => {
+    setFormState(EMPTY_FORM);
+    setFormError("");
+    setIsModalOpen(false);
   };
 
-  const formatDay = (dateStr: string) => {
-    return dateStr.split(' ')[1];
+  const openCreateModal = () => {
+    setFormState({ ...EMPTY_FORM, dateISO: toInputDate(new Date()) });
+    setFormError("");
+    setIsModalOpen(true);
   };
 
-  // Get current date in "Mon DD" format
-  const getCurrentDate = () => {
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    return `${months[currentMonth]} ${currentDay}`;
+  const openEditModal = (holiday: Holiday) => {
+    setFormState({
+      id: holiday.id,
+      name: holiday.name,
+      dateISO: holiday.dateInputValue,
+      description: holiday.description,
+      holidayType: holiday.holidayType,
+    });
+    setFormError("");
+    setIsModalOpen(true);
+  };
+
+  const saveHoliday = async () => {
+    if (!formState.name.trim() || !formState.dateISO.trim() || !formState.holidayType.trim()) {
+      setFormError("Holiday name, date, and type are required.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      const endpoint = formState.id ? `${API_BASE_URL}/api/holidays/${formState.id}` : `${API_BASE_URL}/api/holidays`;
+      const method = formState.id ? "PUT" : "POST";
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formState.name.trim(),
+          dateISO: formState.dateISO.trim(),
+          description: formState.description.trim(),
+          holidayType: formState.holidayType.trim(),
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.ok) {
+        setFormError(data?.error || "Failed to save holiday.");
+        return;
+      }
+      resetForm();
+      await loadHolidays();
+    } catch (saveError) {
+      console.error("Failed to save holiday:", saveError);
+      setFormError("Failed to save holiday.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteHoliday = async (holiday: Holiday) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/holidays/${holiday.id}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.ok) {
+        setError(data?.error || "Failed to delete holiday.");
+        return;
+      }
+      await loadHolidays();
+    } catch (deleteError) {
+      console.error("Failed to delete holiday:", deleteError);
+      setError("Failed to delete holiday.");
+    }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { fontSize: 16, marginTop: 4, color: '#64748b' }]}>{currentYear} Holidays</Text>
-        </View>
-        <View style={styles.dateBadge}>
-          <Text style={styles.dateText}>{getCurrentDate()}</Text>
-        </View>
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      <TopBar subtitle="Holiday Calendar" />
+
+      <View style={styles.headerActions}>
+        <Text style={styles.subtitle}>Live company holidays shared across the whole HRMS</Text>
+        {allowManagement ? (
+          <TouchableOpacity style={styles.manageButton} onPress={openCreateModal}>
+            <Plus size={16} color="#fff" />
+            <Text style={styles.manageButtonText}>Add</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      {/* Stats Summary */}
       <View style={styles.statsContainer}>
-        <View style={[styles.statBox, { backgroundColor: '#dbeafe', borderColor: '#93c5fd' }]}>
-          <Text style={[styles.statCount, { color: '#1e40af' }]}>{categorizedHolidays.upcoming.length}</Text>
-          <Text style={[styles.statLabel, { color: '#1e40af' }]}>Upcoming</Text>
-        </View>
-        <View style={[styles.statBox, { backgroundColor: '#fef3c7', borderColor: '#fcd34d' }]}>
-          <Text style={[styles.statCount, { color: '#92400e' }]}>{categorizedHolidays.recent.length}</Text>
-          <Text style={[styles.statLabel, { color: '#92400e' }]}>Recent</Text>
-        </View>
-        <View style={[styles.statBox, { backgroundColor: '#d1fae5', borderColor: '#86efac' }]}>
-          <Text style={[styles.statCount, { color: '#065f46' }]}>{categorizedHolidays.finished.length}</Text>
-          <Text style={[styles.statLabel, { color: '#065f46' }]}>Finished</Text>
-        </View>
+        {tabs.map((tab) => (
+          <TouchableOpacity
+            key={tab.id}
+            style={[styles.statBox, activeTab === tab.id && styles.statBoxActive]}
+            onPress={() => setActiveTab(tab.id)}
+          >
+            <tab.icon size={16} color={tab.color} />
+            <Text style={styles.statCount}>{tab.count}</Text>
+            <Text style={styles.statLabel}>{tab.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Tabs - Centered with proper spacing */}
-      <View style={styles.tabsWrapper}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabsContent}
-        >
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id;
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+      <KeyboardAwareScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void loadHolidays(); }} />}
+        contentContainerStyle={[styles.listContent, { paddingBottom: getFooterNavClearance(insets.bottom) }]}
+        extraScrollHeight={110}
+      >
+        {loading ? (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color="#2563eb" />
+            <Text style={styles.emptyText}>Loading holidays...</Text>
+          </View>
+        ) : currentDisplayList.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Calendar size={48} color="#cbd5e1" />
+            <Text style={styles.emptyText}>No holidays in this section</Text>
+          </View>
+        ) : (
+          currentDisplayList.map((holiday) => {
+            const daysDiff = Math.floor((holiday.actualDate.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+            const badgeText =
+              daysDiff > 0 ? `In ${daysDiff} day${daysDiff === 1 ? "" : "s"}` : daysDiff < 0 ? `${Math.abs(daysDiff)} day${Math.abs(daysDiff) === 1 ? "" : "s"} ago` : "Today";
+
             return (
-              <TouchableOpacity
-                key={tab.id}
-                onPress={() => setActiveTab(tab.id)}
-                style={[
-                  styles.tabButton,
-                  isActive && styles.tabButtonActive,
-                ]}
-              >
-                <tab.icon size={16} color={isActive ? tab.color : "#6b7280"} />
-                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                  {tab.label}
-                </Text>
-                <View style={[styles.tabCount, { backgroundColor: tab.bg }]}>
-                  <Text style={[styles.tabCountText, { color: tab.color }]}>
-                    {tab.count}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
-      {/* Holidays List */}
-      <View style={styles.listContainer}>
-        <ScrollView
-          showsVerticalScrollIndicator={true}
-          contentContainerStyle={styles.listContent}
-        >
-          {currentDisplayList.length > 0 ? (
-            currentDisplayList.map((holiday, index) => {
-              // Calculate days until/days ago
-              const daysDiff = Math.floor(
-                (holiday.actualDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-              );
-              const dayText = daysDiff > 0
-                ? `In ${daysDiff} day${daysDiff !== 1 ? 's' : ''}`
-                : daysDiff < 0
-                  ? `${Math.abs(daysDiff)} day${Math.abs(daysDiff) !== 1 ? 's' : ''} ago`
-                  : 'Today';
-
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.holidayCard}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.holidayContent}>
-                    <View style={styles.dateContainer}>
-                      <Text style={styles.monthText}>{formatMonth(holiday.date)}</Text>
-                      <Text style={styles.dayText}>{formatDay(holiday.date)}</Text>
-                    </View>
-                    <View style={styles.holidayInfo}>
-                      <Text style={styles.holidayName}>{holiday.name}</Text>
-                      <Text style={styles.holidayDescription} numberOfLines={1}>
-                        {holiday.description}
-                      </Text>
-                      <Text style={[
-                        styles.dayInfo,
-                        daysDiff > 0 ? styles.dayInfoUpcoming :
-                          daysDiff < 0 ? styles.dayInfoPast :
-                            styles.dayInfoToday
-                      ]}>
-                        {dayText}
-                      </Text>
-                    </View>
+              <View key={holiday.id} style={styles.card}>
+                <View style={styles.cardMain}>
+                  <View style={styles.dateBlock}>
+                    <Text style={styles.monthText}>{holiday.actualDate.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</Text>
+                    <Text style={styles.dayText}>{holiday.actualDate.getDate()}</Text>
                   </View>
-                  <ArrowRight size={16} color="#d1d5db" />
-                </TouchableOpacity>
-              );
-            })
-          ) : (
-            <View style={styles.emptyState}>
-              <Calendar size={48} color="#e5e7eb" />
-              <Text style={styles.emptyText}>No holidays to show here</Text>
-              <Text style={styles.emptySubText}>
-                {activeTab === "upcoming"
-                  ? "All holidays for this year have passed"
-                  : "No holidays in this category"}
-              </Text>
-            </View>
-          )}
-        </ScrollView>
-      </View>
-      <View style={styles.footer}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.holidayName}>{holiday.name}</Text>
+                    <Text style={styles.holidayType}>{holiday.holidayType}</Text>
+                    <Text style={styles.holidayDescription}>{holiday.description || holiday.dateLabel}</Text>
+                    <Text style={styles.dayInfo}>{badgeText}</Text>
+                  </View>
+                  <ArrowRight size={16} color="#cbd5e1" />
+                </View>
 
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
-          <Fingerprint size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Mark Attendance</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
-          <MessageSquare size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Chat</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
-          <CalendarDays size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>Leaves</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
-          <History size={22} color="#64748b" />
-          <Text style={styles.footerLabel}>History</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
-          <PartyPopper size={22} color="#059669" />
-          <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Holidays</Text>
-        </TouchableOpacity>
-      </View>
+                {allowManagement ? (
+                  <View style={styles.managementRow}>
+                    <TouchableOpacity style={styles.editButton} onPress={() => openEditModal(holiday)}>
+                      <Pencil size={14} color="#2563eb" />
+                      <Text style={styles.editText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.deleteButton} onPress={() => void deleteHoliday(holiday)}>
+                      <Trash2 size={14} color="#dc2626" />
+                      <Text style={styles.deleteText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+      </KeyboardAwareScrollView>
+
+      <Modal visible={isModalOpen} transparent animationType="slide" onRequestClose={resetForm}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <KeyboardAwareScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            extraScrollHeight={120}
+          >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{formState.id ? "Edit Holiday" : "Add Holiday"}</Text>
+                <TouchableOpacity onPress={resetForm}>
+                  <X size={20} color="#475569" />
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                style={styles.input}
+                placeholder="Holiday name"
+                value={formState.name}
+                onChangeText={(value) => setFormState((current) => ({ ...current, name: value }))}
+                placeholderTextColor="#94a3b8"
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="YYYY-MM-DD"
+                value={formState.dateISO}
+                onChangeText={(value) => setFormState((current) => ({ ...current, dateISO: value }))}
+                placeholderTextColor="#94a3b8"
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.typeRow} keyboardShouldPersistTaps="handled">
+                {HOLIDAY_TYPES.map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.typeChip, formState.holidayType === type && styles.typeChipActive]}
+                    onPress={() => setFormState((current) => ({ ...current, holidayType: type }))}
+                  >
+                    <Text style={[styles.typeChipText, formState.holidayType === type && styles.typeChipTextActive]}>{type}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Description"
+                value={formState.description}
+                onChangeText={(value) => setFormState((current) => ({ ...current, description: value }))}
+                placeholderTextColor="#94a3b8"
+                multiline
+              />
+
+              {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
+
+              <TouchableOpacity style={styles.saveButton} disabled={isSaving} onPress={() => void saveHoliday()}>
+                <Text style={styles.saveButtonText}>{isSaving ? "Saving..." : "Save Holiday"}</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAwareScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <FooterNav activeTab="holidays" />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f8fafc",
-    paddingTop: Platform.OS === 'android' ? 40 : 0,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  backButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: "#f3f4f6",
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#111827",
-    textAlign: "center",
-    flex: 1,
-    marginHorizontal: 12,
-  },
-  dateBadge: {
-    backgroundColor: "#fff",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
+  container: { flex: 1, backgroundColor: "#f8fafc" },
+  headerActions: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 10, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
+  subtitle: { color: "#64748b", fontSize: 13, flex: 1 },
+  manageButton: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#0f172a", paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999 },
+  manageButtonText: { color: "#fff", fontWeight: "800", fontSize: 13 },
+  statsContainer: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  statBox: { flex: 1, backgroundColor: "#fff", borderRadius: 20, padding: 12, alignItems: "center", gap: 6, borderWidth: 1, borderColor: "#e2e8f0" },
+  statBoxActive: { borderColor: "#2563eb", backgroundColor: "#eff6ff" },
+  statCount: { fontSize: 22, fontWeight: "800", color: "#0f172a" },
+  statLabel: { fontSize: 12, fontWeight: "700", color: "#475569" },
+  errorText: { color: "#b91c1c", paddingHorizontal: 18, paddingTop: 8, fontWeight: "600" },
+  listContent: { paddingHorizontal: 16, paddingTop: 8, gap: 12 },
+  card: { backgroundColor: "#fff", borderRadius: 24, borderWidth: 1, borderColor: "#e2e8f0", padding: 16, gap: 14 },
+  cardMain: { flexDirection: "row", alignItems: "center", gap: 14 },
+  dateBlock: { width: 64, height: 78, borderRadius: 18, backgroundColor: "#eff6ff", alignItems: "center", justifyContent: "center" },
+  monthText: { color: "#2563eb", fontWeight: "800", fontSize: 12 },
+  dayText: { color: "#0f172a", fontWeight: "900", fontSize: 28 },
+  holidayName: { fontSize: 16, fontWeight: "800", color: "#0f172a" },
+  holidayType: { fontSize: 12, color: "#2563eb", fontWeight: "700", marginTop: 3 },
+  holidayDescription: { fontSize: 13, color: "#64748b", marginTop: 4 },
+  dayInfo: { marginTop: 6, fontSize: 12, color: "#059669", fontWeight: "700" },
+  managementRow: { flexDirection: "row", gap: 12 },
+  editButton: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#eff6ff", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9 },
+  deleteButton: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#fef2f2", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9 },
+  editText: { color: "#2563eb", fontWeight: "800", fontSize: 12 },
+  deleteText: { color: "#dc2626", fontWeight: "800", fontSize: 12 },
+  emptyState: { alignItems: "center", justifyContent: "center", paddingVertical: 48, gap: 12 },
+  emptyText: { color: "#64748b", fontSize: 14, fontWeight: "700" },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(15, 23, 42, 0.5)", justifyContent: "flex-end", padding: 16 },
+  modalScrollContent: { flexGrow: 1, justifyContent: "flex-end" },
+  modalCard: { backgroundColor: "#fff", borderRadius: 28, padding: 18, gap: 12 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  modalTitle: { fontSize: 20, fontWeight: "800", color: "#0f172a" },
+  input: {
     borderWidth: 1,
-    borderColor: "#f3f4f6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  dateText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#2563eb",
-  },
-  statsContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    marginTop: 20,
-    marginBottom: 16,
-    gap: 12,
-  },
-  statBox: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
+    borderColor: "#cbd5e1",
     borderRadius: 16,
-    borderWidth: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  statCount: {
-    fontSize: 24,
-    fontWeight: "800",
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  tabsWrapper: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-  },
-  tabsContent: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 12,
-    paddingRight: 20,
-  },
-  tabButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 20,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    borderRadius: 20,
-    backgroundColor: "#f3f4f6",
-    borderWidth: 1,
-    borderColor: "transparent",
-    minWidth: 120,
-    justifyContent: "center",
-  },
-  tabButtonActive: {
+    color: "#0f172a",
     backgroundColor: "#fff",
-    borderColor: "#93c5fd",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    transform: [{ scale: 1.05 }],
   },
-  tabLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#6b7280",
-  },
-  tabLabelActive: {
-    color: "#111827",
-    fontWeight: "700",
-  },
-  tabCount: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 4,
-  },
-  tabCountText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  listContainer: {
-    flex: 1,
-    backgroundColor: "#fff",
-    marginHorizontal: 20,
-    marginBottom: 20,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: "#f3f4f6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 5,
-    overflow: "hidden",
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  holidayCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f9fafb",
-    padding: 20,
-    borderRadius: 24,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "transparent",
-  },
-  holidayContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-    flex: 1,
-  },
-  dateContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#f3f4f6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  monthText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#2563eb",
-    textTransform: "uppercase",
-    marginBottom: 2,
-  },
-  dayText: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#111827",
-    lineHeight: 20,
-  },
-  holidayInfo: {
-    flex: 1,
-  },
-  holidayName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 4,
-  },
-  holidayDescription: {
-    fontSize: 12,
-    color: "#6b7280",
-    lineHeight: 14,
-    marginBottom: 6,
-  },
-  dayInfo: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  dayInfoUpcoming: {
-    color: "#2563eb",
-  },
-  dayInfoPast: {
-    color: "#6b7280",
-  },
-  dayInfoToday: {
-    color: "#059669",
-  },
-  emptyState: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 80,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-    marginTop: 12,
-  },
-  emptySubText: {
-    fontSize: 14,
-    color: "#9ca3af",
-    marginTop: 6,
-    textAlign: "center",
-    paddingHorizontal: 20,
-  },
-  footer: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  footerButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-  },
-  footerLabel: {
-    fontSize: 10,
-    color: '#64748b',
-    marginTop: 4,
-  }
+  textArea: { minHeight: 92, textAlignVertical: "top" },
+  typeRow: { gap: 8 },
+  typeChip: { borderRadius: 999, borderWidth: 1, borderColor: "#cbd5e1", paddingHorizontal: 12, paddingVertical: 9 },
+  typeChipActive: { backgroundColor: "#0f172a", borderColor: "#0f172a" },
+  typeChipText: { color: "#475569", fontWeight: "700", fontSize: 12 },
+  typeChipTextActive: { color: "#fff" },
+  saveButton: { marginTop: 4, backgroundColor: "#059669", borderRadius: 16, paddingVertical: 14, alignItems: "center" },
+  saveButtonText: { color: "#fff", fontWeight: "800", fontSize: 14 },
 });
 
 export default HolidaysPage;

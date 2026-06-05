@@ -4,20 +4,15 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import {
   Building2,
-  CalendarDays,
   Camera,
   CheckCircle,
   ChevronLeft,
   Clock,
-  Fingerprint,
-  History,
   LogIn,
   LogOut,
   MapPin,
   MessageSquare,
   Navigation,
-  PartyPopper,
-  Power,
   User
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -25,16 +20,23 @@ import {
   ActivityIndicator,
   Dimensions,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
+import FooterNav, {
+  getFooterNavClearance,
+} from '../../components/leave_feature/components/FooterNav';
+import TopBar from '../../components/common/TopBar';
+import KeyboardAwareScrollView from '../../components/ui/keyboard-aware-scroll-view';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -56,19 +58,58 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 const getTimeStatus = (type: PunchType) => {
-  if (type === 'OUT') return { label: 'Punch Out', color: '#64748b' };
-
   const now = new Date();
   const hours = now.getHours();
   const minutes = now.getMinutes();
   const totalMinutes = hours * 60 + minutes;
 
+  if (type === 'OUT') {
+    const earlyLogoutLimit = 18 * 60;
+
+    if (totalMinutes < earlyLogoutLimit) {
+      return {
+        label: 'Early Logout',
+        color: '#dc2626',
+        requiresComment: true,
+        commentLabel: 'Reason for early logout',
+      };
+    }
+
+    return {
+      label: 'Punch Out',
+      color: '#64748b',
+      requiresComment: false,
+      commentLabel: '',
+    };
+  }
+
   const onTimeLimit = 9 * 60;
   const graceLimit = 9 * 60 + 15;
 
-  if (totalMinutes <= onTimeLimit) return { label: 'On Time', color: '#16a34a' };
-  if (totalMinutes <= graceLimit) return { label: 'Grace Period', color: '#f59e0b' };
-  return { label: 'Late Entry', color: '#dc2626' };
+  if (totalMinutes <= onTimeLimit) {
+    return {
+      label: 'On Time',
+      color: '#16a34a',
+      requiresComment: false,
+      commentLabel: '',
+    };
+  }
+
+  if (totalMinutes <= graceLimit) {
+    return {
+      label: 'Grace Period',
+      color: '#f59e0b',
+      requiresComment: false,
+      commentLabel: '',
+    };
+  }
+
+  return {
+    label: 'Late Entry',
+    color: '#dc2626',
+    requiresComment: true,
+    commentLabel: 'Reason for late punch in',
+  };
 };
 
 // --- Types ---
@@ -90,6 +131,7 @@ interface Branch {
 type CameraRef = React.ComponentRef<typeof CameraView>;
 
 const AttendanceScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -104,8 +146,25 @@ const AttendanceScreen: React.FC = () => {
   const [submitStatus, setSubmitStatus] = useState<string | null>(null);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
-  const [isLogoutConfirming, setIsLogoutConfirming] = useState(false);
+  const [isOutOfRangeConfirming, setIsOutOfRangeConfirming] = useState(false);
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  const [attendanceComment, setAttendanceComment] = useState('');
+  const [outOfRangeReason, setOutOfRangeReason] = useState('');
+  const [outOfRangeDistance, setOutOfRangeDistance] = useState<number | null>(null);
+  const [locationOverrideAllowed, setLocationOverrideAllowed] = useState(false);
+  const [pendingBranch, setPendingBranch] = useState<Branch | null>(null);
+
+  const resolveCurrentLocation = useCallback(async () => {
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    if (!servicesEnabled) {
+      throw new Error("Location services disabled");
+    }
+
+    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+    const nextLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    setLocation(nextLocation);
+    return nextLocation;
+  }, []);
 
   const loadTodayAttendance = useCallback(async (empId: string) => {
     try {
@@ -136,24 +195,39 @@ const AttendanceScreen: React.FC = () => {
 
   useEffect(() => {
     const init = async () => {
-      const id = await AsyncStorage.getItem('userEmpId');
-      const storedName = await AsyncStorage.getItem('userName');
-      setEmployeeId(id);
-      setName(storedName);
+      try {
+        const id = await AsyncStorage.getItem('userEmpId');
+        const storedName = await AsyncStorage.getItem('userName');
+        setEmployeeId(id);
+        setName(storedName);
 
-      const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
-      if (locStatus === 'granted') {
-        const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
+        if (locStatus === 'granted') {
+          try {
+            await resolveCurrentLocation();
+          } catch (error) {
+            console.warn("Initial location unavailable:", error);
+            Toast.show({
+              type: 'info',
+              text1: 'Location unavailable',
+              text2: 'Enable device location to check branch range.',
+            });
+          }
+        }
+
+        if (!cameraPermission?.granted) await requestCameraPermission();
+      } catch (error) {
+        console.error("Attendance initialization failed:", error);
       }
-      if (!cameraPermission?.granted) await requestCameraPermission();
     };
-    init();
-  }, [cameraPermission, requestCameraPermission]);
+    void init();
+  }, [cameraPermission, requestCameraPermission, resolveCurrentLocation]);
 
   useEffect(() => {
     if (employeeId) loadTodayAttendance(employeeId);
   }, [employeeId, loadTodayAttendance]);
+
+  const refreshCurrentLocation = useCallback(async () => resolveCurrentLocation(), [resolveCurrentLocation]);
 
   const checkBranchDistance = (branch: Branch) => {
     if (!location.lat || !location.lng) return { inRange: false, distance: 0 };
@@ -161,22 +235,64 @@ const AttendanceScreen: React.FC = () => {
     return { inRange: distance <= branch.radius, distance };
   };
 
-  const handleBranchSelect = (branch: Branch) => {
-    const { inRange, distance } = checkBranchDistance(branch);
-    if (!inRange) {
+  const continueWithOutOfRangeBranch = () => {
+    const trimmedReason = outOfRangeReason.trim();
+
+    if (!trimmedReason) {
       Toast.show({
         type: 'error',
-        text1: 'Out of Range',
-        text2: `You are ${distance}m away. Must be within ${branch.radius}m.`,
+        text1: 'Reason Required',
+        text2: 'Please enter the reason to continue from this location.',
       });
       return;
     }
+
+    if (!pendingBranch) return;
+
+    setSelectedBranch(pendingBranch);
+    setLocationOverrideAllowed(true);
+    setIsOutOfRangeConfirming(false);
+    setCurrentStep(2);
+  };
+
+  const handleBranchSelect = async (branch: Branch) => {
+    let currentLocation = location;
+
+    if (!currentLocation.lat || !currentLocation.lng) {
+      try {
+        currentLocation = await refreshCurrentLocation();
+      } catch {
+        Toast.show({
+          type: 'error',
+          text1: 'Location Unavailable',
+          text2: 'Please enable location and try again.',
+        });
+        return;
+      }
+    }
+
+    const distance = getDistanceMeters(currentLocation.lat!, currentLocation.lng!, branch.lat, branch.lon);
+    const inRange = distance <= branch.radius;
+
+    if (!inRange) {
+      setPendingBranch(branch);
+      setOutOfRangeDistance(distance);
+      setOutOfRangeReason('');
+      setIsOutOfRangeConfirming(true);
+      return;
+    }
+
     setSelectedBranch(branch);
+    setPendingBranch(null);
+    setOutOfRangeDistance(null);
+    setOutOfRangeReason('');
+    setLocationOverrideAllowed(false);
     setCurrentStep(2);
   };
 
   const handlePunchTypeSelect = (type: PunchType) => {
     setPunchType(type);
+    setAttendanceComment('');
     setCurrentStep(3);
   };
 
@@ -189,7 +305,7 @@ const AttendanceScreen: React.FC = () => {
         setPreviewImage(`data:image/jpeg;base64,${photo.base64}`);
         setIsConfirming(true);
       }
-    } catch (e) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Capture Failed' });
     } finally {
       setSubmitLoading(false);
@@ -198,6 +314,16 @@ const AttendanceScreen: React.FC = () => {
 
   const handleConfirmSubmit = async () => {
     if (!previewImage || !employeeId || !punchType || !selectedBranch) return;
+    const trimmedComment = attendanceComment.trim();
+
+    if (timeStatus?.requiresComment && !trimmedComment) {
+      Toast.show({
+        type: 'error',
+        text1: 'Comment Required',
+        text2: 'Please enter the reason before submitting attendance.',
+      });
+      return;
+    }
 
     try {
       setSubmitLoading(true);
@@ -212,6 +338,12 @@ const AttendanceScreen: React.FC = () => {
           punchType,
           branchId: selectedBranch?.id,
           branchName: selectedBranch?.name,
+          comment: trimmedComment || undefined,
+          remarks: trimmedComment || undefined,
+          outOfRangeReason: locationOverrideAllowed ? outOfRangeReason.trim() : undefined,
+          locationOverrideReason: locationOverrideAllowed ? outOfRangeReason.trim() : undefined,
+          allowOutOfRangePunch: locationOverrideAllowed || undefined,
+          outOfRangeDistance: locationOverrideAllowed ? outOfRangeDistance : undefined,
         }),
       });
 
@@ -236,14 +368,22 @@ const AttendanceScreen: React.FC = () => {
           setPunchType(null);
           setSelectedBranch(null);
           setSubmitStatus(null);
+          setAttendanceComment('');
+          setOutOfRangeReason('');
+          setOutOfRangeDistance(null);
+          setLocationOverrideAllowed(false);
+          setPendingBranch(null);
         }, 2000);
       }
-    } catch (e) {
+    } catch {
       Toast.show({ type: 'error', text1: 'Network Error' });
     } finally {
       setSubmitLoading(false);
       setIsConfirming(false);
       setPreviewImage(null);
+      if (!submitStatus) {
+        setAttendanceComment('');
+      }
     }
   };
 
@@ -255,20 +395,10 @@ const AttendanceScreen: React.FC = () => {
   const timeStatus = punchType ? getTimeStatus(punchType) : null;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Professional Header */}
       {currentStep !== 3 && (
-        <View style={styles.header}>
-          <View style={styles.headerContent}>
-            <View style={styles.headerLeft}>
-              <Image source={require('../../assets/logo-hd.png')} style={styles.logo} resizeMode="contain" />
-            </View>
-            <TouchableOpacity onPress={() => setIsLogoutConfirming(true)} style={styles.logoutBtn}>
-              <Power size={20} color="#dc2626" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Modern Step Progress */}
+        <TopBar>
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
               <View style={[styles.progressFill, { width: `${(currentStep / 3) * 100}%` }]} />
@@ -279,12 +409,15 @@ const AttendanceScreen: React.FC = () => {
               <Text style={[styles.stepLabel, currentStep >= 3 && styles.stepLabelActive]}>Verify</Text>
             </View>
           </View>
-        </View>
+        </TopBar>
       )}
 
       {/* STEP 1: Branch Selection */}
       {currentStep === 1 && (
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={{ paddingBottom: getFooterNavClearance(insets.bottom) }}
+          showsVerticalScrollIndicator={false}>
           {/* User Info Card */}
           <View style={styles.userCard}>
             <View style={styles.userAvatarContainer}>
@@ -336,6 +469,14 @@ const AttendanceScreen: React.FC = () => {
               </View>
             </View>
           </View>
+
+          <TouchableOpacity style={styles.regularizationCard} onPress={() => router.push("/regularization")}>
+            <View>
+              <Text style={styles.regularizationTitle}>Attendance Regularization</Text>
+              <Text style={styles.regularizationSubtitle}>Fix missed or incorrect punch records</Text>
+            </View>
+            <MessageSquare size={20} color="#2563eb" />
+          </TouchableOpacity>
 
           {/* Conditional Content */}
           {record?.punchInTime && record?.punchOutTime ? (
@@ -453,103 +594,148 @@ const AttendanceScreen: React.FC = () => {
 
       {/* Footer Navigation */}
       {currentStep === 1 && (
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/attendance')}>
-            <Fingerprint size={22} color="#059669" />
-            <Text style={[styles.footerLabel, { color: '#059669', fontWeight: 'bold' }]}>Mark Attendance</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/chat')}>
-            <MessageSquare size={22} color="#64748b" />
-            <Text style={styles.footerLabel}>Chat</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/leave')}>
-            <CalendarDays size={22} color="#64748b" />
-            <Text style={styles.footerLabel}>Leaves</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/att-history')}>
-            <History size={22} color="#64748b" />
-            <Text style={styles.footerLabel}>History</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.footerButton} onPress={() => router.push('/holidays')}>
-            <PartyPopper size={22} color="#64748b" />
-            <Text style={styles.footerLabel}>Holidays</Text>
-          </TouchableOpacity>
-        </View>
+        <FooterNav activeTab="attendance" />
       )}
 
       {/* Confirmation Modal */}
       <Modal visible={isConfirming} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalHeader}>Confirm Attendance</Text>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <KeyboardAwareScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            avoidKeyboard={false}
+            extraScrollHeight={130}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalHeader}>Confirm Attendance</Text>
 
-            {previewImage && (
-              <Image
-                source={{ uri: previewImage }}
-                style={[styles.previewPhoto, { transform: [{ scaleX: -1 }] }]}
-              />
-            )}
+              {previewImage && (
+                <Image
+                  source={{ uri: previewImage }}
+                  style={[styles.previewPhoto, { transform: [{ scaleX: -1 }] }]}
+                />
+              )}
 
-            <View style={styles.confirmInfo}>
-              <View style={styles.confirmRow}>
-                <Clock size={16} color="#64748b" />
-                <Text style={styles.confirmText}>
-                  {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </Text>
+              <View style={styles.confirmInfo}>
+                <View style={styles.confirmRow}>
+                  <Clock size={16} color="#64748b" />
+                  <Text style={styles.confirmText}>
+                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+                {timeStatus && (
+                  <View style={[styles.timeBadge, { backgroundColor: timeStatus.color }]}>
+                    <Text style={styles.timeBadgeText}>{timeStatus.label}</Text>
+                  </View>
+                )}
               </View>
-              {timeStatus && (
-                <View style={[styles.timeBadge, { backgroundColor: timeStatus.color }]}>
-                  <Text style={styles.timeBadgeText}>{timeStatus.label}</Text>
+
+              {timeStatus?.requiresComment && (
+                <View style={styles.commentSection}>
+                  <Text style={styles.commentLabel}>{timeStatus.commentLabel}</Text>
+                  <TextInput
+                    style={styles.commentInput}
+                    placeholder="Type your comment here"
+                    placeholderTextColor="#94a3b8"
+                    value={attendanceComment}
+                    onChangeText={setAttendanceComment}
+                    multiline
+                    textAlignVertical="top"
+                  />
                 </View>
               )}
+
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={handleConfirmSubmit}
+                disabled={submitLoading}
+              >
+                {submitLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Submit Attendance</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.retakeButton}
+                onPress={() => {
+                  setIsConfirming(false);
+                  setAttendanceComment('');
+                }}
+              >
+                <Text style={styles.retakeButtonText}>Retake Photo</Text>
+              </TouchableOpacity>
             </View>
-
-            <TouchableOpacity
-              style={styles.submitButton}
-              onPress={handleConfirmSubmit}
-              disabled={submitLoading}
-            >
-              {submitLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitButtonText}>Submit Attendance</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.retakeButton}
-              onPress={() => setIsConfirming(false)}
-            >
-              <Text style={styles.retakeButtonText}>Retake Photo</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          </KeyboardAwareScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
-      {/* Logout Modal */}
-      <Modal visible={isLogoutConfirming} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalHeader}>Confirm Logout</Text>
-            <Text style={styles.modalSubtext}>Are you sure you want to sign out?</Text>
-            <TouchableOpacity
-              style={[styles.submitButton, { backgroundColor: '#dc2626' }]}
-              onPress={async () => {
-                await AsyncStorage.multiRemove(["userRole", "userEmpId", "userName", "userTeam"]);
-                router.replace('/');
-              }}
-            >
-              <Text style={styles.submitButtonText}>Logout</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.retakeButton}
-              onPress={() => setIsLogoutConfirming(false)}
-            >
-              <Text style={styles.retakeButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      <Modal visible={isOutOfRangeConfirming} transparent animationType="fade">
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <KeyboardAwareScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            avoidKeyboard={false}
+            extraScrollHeight={130}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalHeader}>Out of Range</Text>
+              <Text style={styles.modalSubtext}>
+                Your current location is outside the selected branch radius. Enter a reason to continue.
+              </Text>
+
+              <View style={styles.overrideInfoCard}>
+                <Text style={styles.overrideInfoLabel}>Selected Branch</Text>
+                <Text style={styles.overrideInfoValue}>{pendingBranch?.name || '-'}</Text>
+
+                <Text style={styles.overrideInfoLabel}>Current Location</Text>
+                <Text style={styles.overrideInfoValue}>
+                  {location.lat && location.lng
+                    ? `${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`
+                    : 'Location unavailable'}
+                </Text>
+
+                <Text style={styles.overrideInfoLabel}>Distance</Text>
+                <Text style={styles.overrideInfoValue}>
+                  {outOfRangeDistance !== null && pendingBranch
+                    ? `${outOfRangeDistance}m from branch`
+                    : '-'}
+                </Text>
+              </View>
+
+              <View style={styles.commentSection}>
+                <Text style={styles.commentLabel}>Reason for punching from this location</Text>
+                <TextInput
+                  style={styles.commentInput}
+                  placeholder="Type your reason here"
+                  placeholderTextColor="#94a3b8"
+                  value={outOfRangeReason}
+                  onChangeText={setOutOfRangeReason}
+                  multiline
+                  textAlignVertical="top"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={continueWithOutOfRangeBranch}>
+                <Text style={styles.submitButtonText}>Continue Anyway</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.retakeButton}
+                onPress={() => {
+                  setIsOutOfRangeConfirming(false);
+                  setPendingBranch(null);
+                  setOutOfRangeReason('');
+                  setOutOfRangeDistance(null);
+                }}>
+                <Text style={styles.retakeButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAwareScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Success Overlay */}
@@ -725,6 +911,28 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
+  },
+  regularizationCard: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  regularizationTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  regularizationSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#475569',
   },
   timelineContainer: {
     marginTop: 16
@@ -1073,6 +1281,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: '#64748b',
+    textAlign: 'center',
+    width: '100%',
+    lineHeight: 14,
   },
 
   // Modal Styles
@@ -1080,6 +1291,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end'
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
   },
   modalCard: {
     backgroundColor: '#fff',
@@ -1125,6 +1340,45 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#334155'
+  },
+  commentSection: {
+    marginBottom: 20,
+  },
+  commentLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 10,
+  },
+  commentInput: {
+    minHeight: 96,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#0f172a',
+    backgroundColor: '#f8fafc',
+  },
+  overrideInfoCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    gap: 6,
+  },
+  overrideInfoLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+  },
+  overrideInfoValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 8,
   },
   timeBadge: {
     paddingHorizontal: 12,
